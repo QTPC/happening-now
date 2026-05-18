@@ -1080,6 +1080,106 @@ const GlobeRenderer = {
     if (this._pointInterval) clearInterval(this._pointInterval);
   }
 };
+
+// === Counter Manager ===
+const CounterManager = {
+  startTime: null,
+  frequency: 0,
+  intervalId: null,
+  lastPulse: 0,
+
+  start(frequencyPerSecond) {
+    this.stop();
+    this.startTime = Date.now();
+    this.frequency = frequencyPerSecond;
+    this.lastPulse = 0;
+    this.intervalId = setInterval(() => this.update(), 50);
+    this.update();
+  },
+
+  update() {
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    const count = this.frequency * elapsed;
+
+    const digits = document.getElementById('counterDigits');
+    if (digits) {
+      const formatted = count >= 1000000
+        ? (count / 1000000).toFixed(2) + 'M'
+        : count >= 1000
+          ? (count / 1000).toFixed(1) + 'K'
+          : Math.floor(count).toLocaleString();
+      digits.textContent = formatted;
+    }
+
+    const elapsedEl = document.getElementById('counterElapsed');
+    if (elapsedEl) {
+      const min = Math.floor(elapsed / 60);
+      const sec = Math.floor(elapsed % 60);
+      elapsedEl.textContent = I18N.t('elapsedPrefix') +
+        (min > 0 ? min + I18N.t('minutes') : '') +
+        sec + I18N.t('seconds');
+    }
+
+    const pulsesNow = Math.floor(count);
+    if (pulsesNow > this.lastPulse) {
+      this.lastPulse = pulsesNow;
+      const dot = document.getElementById('pulseDot');
+      if (dot) {
+        dot.classList.remove('active');
+        void dot.offsetWidth;
+        dot.classList.add('active');
+      }
+    }
+  },
+
+  stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+  }
+};
+
+// === Frequency Chart ===
+const FrequencyChart = {
+  render(currentEventName, currentFrequency) {
+    const container = document.getElementById('barChart');
+    if (!container) return;
+
+    const comparisons = EVENT_DATA
+      .filter(e => e.frequency !== currentFrequency)
+      .sort((a, b) => Math.abs(Math.log(a.frequency) - Math.log(currentFrequency)) - Math.abs(Math.log(b.frequency) - Math.log(currentFrequency)))
+      .slice(0, 5);
+
+    const all = [
+      { event: currentEventName, frequency: currentFrequency, isCurrent: true },
+      ...comparisons.map(e => ({ event: I18N.getEventName(e.event), frequency: e.frequency, isCurrent: false }))
+    ];
+
+    all.sort((a, b) => b.frequency - a.frequency);
+    const maxFreq = all[0].frequency;
+    const perSecLabel = I18N.t('perSecond');
+
+    container.innerHTML = all.map(item => {
+      const pct = Math.max(1, (Math.log10(item.frequency + 1) / Math.log10(maxFreq + 1)) * 100);
+      const freqStr = item.frequency >= 1000000
+        ? (item.frequency / 1000000).toFixed(1) + 'M'
+        : item.frequency >= 1000
+          ? (item.frequency / 1000).toFixed(1) + 'K'
+          : item.frequency.toFixed(1);
+      const fillClass = item.isCurrent ? 'current' : 'other';
+      return `
+        <div class="bar-row">
+          <div class="bar-label" title="${item.event}">${item.event}</div>
+          <div class="bar-track">
+            <div class="bar-fill ${fillClass}" style="width: ${pct}%"></div>
+          </div>
+          <div class="bar-value">${freqStr}${perSecLabel}</div>
+        </div>
+      `;
+    }).join('');
+  }
+};
 </script>
 </body>
 </html>
