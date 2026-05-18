@@ -135,9 +135,9 @@ body {
 /* === Globe Container === */
 .globe-container {
   position: relative;
-  background: #141924;
+  background: #060810;
   border-radius: 12px;
-  border: 1px solid #2a3040;
+  border: 1px solid #1a2540;
   overflow: hidden;
   aspect-ratio: 1;
 }
@@ -885,11 +885,56 @@ Criteria:
 };
 
 // === Globe Renderer ===
+// Simplified continent outlines [lat_deg, lon_deg] pairs
+const CONTINENTS = [
+  // North America
+  [[70,-168],[72,-140],[70,-100],[65,-90],[60,-65],[50,-55],[45,-65],[30,-80],[25,-80],[25,-100],[20,-105],[15,-90],[10,-85],[8,-78],[15,-60],[20,-60],[25,-80],[30,-100],[35,-120],[40,-125],[48,-125],[55,-130],[60,-140],[65,-168]],
+  // South America
+  [[12,-72],[12,-60],[5,-52],[0,-50],[-5,-35],[-10,-37],[-15,-40],[-23,-43],[-30,-50],[-35,-57],[-40,-65],[-45,-70],[-55,-70],[-55,-65],[-45,-60],[-35,-55],[-25,-48],[-15,-40],[-5,-50],[0,-60],[5,-65],[10,-72]],
+  // Europe
+  [[72,20],[70,30],[65,30],[60,30],[55,25],[50,15],[47,15],[44,12],[40,5],[36,-5],[36,0],[38,5],[40,15],[42,20],[45,25],[48,30],[50,35],[55,30],[60,25],[65,20]],
+  // Africa
+  [[37,10],[35,10],[30,32],[25,35],[20,40],[15,45],[10,45],[5,42],[0,42],[-5,40],[-10,40],[-15,35],[-25,30],[-30,28],[-35,20],[-35,18],[-30,17],[-25,15],[-20,12],[-15,12],[-10,14],[-5,10],[0,10],[5,5],[10,5],[15,-15],[20,-15],[25,-15],[30,-5],[35,0]],
+  // Asia (simplified)
+  [[72,30],[75,60],[75,90],[72,120],[70,140],[68,170],[65,175],[60,165],[55,140],[50,130],[45,135],[40,130],[35,120],[30,120],[25,105],[20,100],[15,100],[10,105],[5,105],[0,105],[-5,105],[-8,115],[-5,120],[0,115],[5,110],[10,105],[15,110],[20,110],[25,115],[30,115],[35,120],[40,115],[45,90],[50,80],[55,70],[60,60],[65,50],[70,40]],
+  // Australia
+  [[-12,130],[-15,125],[-20,115],[-25,115],[-30,115],[-35,118],[-38,145],[-35,150],[-30,153],[-25,150],[-20,145],[-15,140],[-12,135]],
+  // India
+  [[30,70],[25,70],[20,73],[15,75],[10,78],[8,77],[10,80],[15,80],[20,85],[25,80],[30,75]],
+  // Middle East
+  [[35,35],[30,35],[25,38],[20,40],[15,45],[20,50],[25,55],[30,50],[35,45]],
+  // Southeast Asia
+  [[20,100],[15,100],[10,105],[5,105],[0,105],[-5,105],[-8,115],[-5,120],[0,115],[5,110],[10,105],[15,108],[20,106]],
+  // Japan
+  [[45,140],[40,140],[35,135],[33,132],[35,138],[38,140],[42,145]],
+  // UK
+  [[58,-5],[55,-3],[52,0],[50,-5],[52,-5],[55,-5]],
+  // Greenland
+  [[82,-40],[78,-20],[72,-22],[68,-30],[65,-40],[70,-55],[75,-60],[80,-50]],
+];
+
+// Stars (generated once)
+let STARS = null;
+function generateStars(w, h) {
+  const stars = [];
+  for (let i = 0; i < 200; i++) {
+    stars.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      size: Math.random() * 1.5 + 0.3,
+      brightness: Math.random() * 0.6 + 0.4,
+      twinkleSpeed: Math.random() * 0.02 + 0.005,
+      twinkleOffset: Math.random() * Math.PI * 2,
+    });
+  }
+  return stars;
+}
+
 const GlobeRenderer = {
   canvas: null,
   ctx: null,
   rotation: 0,
-  rotationSpeed: 0.003,
+  rotationSpeed: 0.002,
   zoom: 1,
   isDragging: false,
   dragStartX: 0,
@@ -899,11 +944,13 @@ const GlobeRenderer = {
   radius: 0,
   centerX: 0,
   centerY: 0,
+  frameCount: 0,
 
   init(canvasId) {
     this.canvas = document.getElementById(canvasId);
     this.ctx = this.canvas.getContext('2d');
     this.resize();
+    STARS = generateStars(this.canvas.width, this.canvas.height);
     this.bindEvents();
     this.animate();
   },
@@ -915,9 +962,10 @@ const GlobeRenderer = {
     this.canvas.height = size * 2;
     this.canvas.style.width = size + 'px';
     this.canvas.style.height = size + 'px';
-    this.radius = size * 0.4;
+    this.radius = size * 0.38;
     this.centerX = size;
     this.centerY = size;
+    STARS = generateStars(this.canvas.width, this.canvas.height);
   },
 
   bindEvents() {
@@ -944,7 +992,6 @@ const GlobeRenderer = {
       this.rotation = 0;
     });
 
-    // Touch support
     let lastPinchDist = 0;
     this.canvas.addEventListener('touchstart', (e) => {
       if (e.touches.length === 1) {
@@ -980,8 +1027,245 @@ const GlobeRenderer = {
     this.points.push({ lat, lon, life: 1.0, size: 2 + Math.random() * 3 });
   },
 
+  project(latRad, lonRad) {
+    const r = this.radius * this.zoom;
+    const cx = this.centerX;
+    const cy = this.centerY;
+    const cosLon = Math.cos(lonRad + this.rotation);
+    const sinLon = Math.sin(lonRad + this.rotation);
+    const cosLat = Math.cos(latRad);
+    const sinLat = Math.sin(latRad);
+    const x3d = cosLat * cosLon;
+    const y3d = sinLat;
+    const z3d = cosLat * sinLon;
+    return { x: cx + x3d * r, y: cy - y3d * r, z: z3d };
+  },
+
+  drawStars(ctx, w, h) {
+    for (const s of STARS) {
+      const twinkle = Math.sin(this.frameCount * s.twinkleSpeed + s.twinkleOffset) * 0.3 + 0.7;
+      const alpha = s.brightness * twinkle;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
+      ctx.fill();
+    }
+  },
+
+  drawOcean(ctx, cx, cy, r) {
+    // Ocean base - deep blue
+    const oceanGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
+    oceanGrad.addColorStop(0, '#1a3a5c');
+    oceanGrad.addColorStop(0.5, '#0f2847');
+    oceanGrad.addColorStop(0.8, '#0a1e3a');
+    oceanGrad.addColorStop(1, '#061428');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = oceanGrad;
+    ctx.fill();
+
+    // Subtle ocean texture - horizontal scan lines
+    ctx.save();
+    ctx.clip();
+    ctx.globalAlpha = 0.03;
+    for (let y = cy - r; y < cy + r; y += 4) {
+      ctx.beginPath();
+      ctx.moveTo(cx - r, y);
+      ctx.lineTo(cx + r, y);
+      ctx.strokeStyle = '#4a8ab5';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  },
+
+  drawContinent(ctx, coords, cx, cy, r, isNight) {
+    const DEG = Math.PI / 180;
+    const points3d = coords.map(([lat, lon]) => {
+      const latRad = lat * DEG;
+      const lonRad = lon * DEG;
+      const p = this.project(latRad, lonRad);
+      return p;
+    });
+
+    // Check if any point is on the visible side
+    const visiblePoints = points3d.filter(p => p.z > -0.15);
+    if (visiblePoints.length < 2) return;
+
+    ctx.beginPath();
+    let started = false;
+    for (const p of points3d) {
+      if (p.z < -0.3) continue;
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    if (!started) return;
+    ctx.closePath();
+
+    // Land color based on sun position (assume sun is to the right-front)
+    const avgZ = points3d.reduce((s, p) => s + p.z, 0) / points3d.length;
+    const brightness = Math.max(0, avgZ) * 0.6 + 0.4;
+
+    if (isNight) {
+      ctx.fillStyle = `rgba(15, 35, 25, ${brightness * 0.6})`;
+    } else {
+      const g = Math.floor(100 + brightness * 60);
+      const b = Math.floor(50 + brightness * 30);
+      ctx.fillStyle = `rgba(40, ${g}, ${b}, ${brightness * 0.85})`;
+    }
+    ctx.fill();
+
+    // Coastline glow
+    ctx.strokeStyle = isNight
+      ? `rgba(20, 60, 40, ${brightness * 0.4})`
+      : `rgba(80, 180, 120, ${brightness * 0.5})`;
+    ctx.lineWidth = 1.2 * this.zoom;
+    ctx.stroke();
+  },
+
+  drawClouds(ctx, cx, cy, r) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Cloud bands at different latitudes
+    const cloudBands = [
+      { lat: 0.6, width: 0.08, alpha: 0.06 },
+      { lat: -0.4, width: 0.1, alpha: 0.05 },
+      { lat: 0.2, width: 0.06, alpha: 0.04 },
+      { lat: -0.7, width: 0.07, alpha: 0.05 },
+    ];
+
+    for (const band of cloudBands) {
+      const bandY = cy - band.lat * r;
+      const bandH = band.width * r;
+      ctx.beginPath();
+      ctx.ellipse(cx, bandY, r * 0.95, bandH, 0, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(200, 220, 255, ${band.alpha})`;
+      ctx.fill();
+    }
+
+    // Scattered cloud patches
+    const t = this.frameCount * 0.0003;
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2 + t + this.rotation * 0.5;
+      const lat = Math.sin(i * 2.7) * 0.6;
+      const p = this.project(lat, angle);
+      if (p.z < 0.1) continue;
+
+      const cloudR = r * (0.04 + Math.sin(i * 1.3) * 0.02) * this.zoom;
+      const cloudGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, cloudR);
+      cloudGrad.addColorStop(0, `rgba(200, 220, 255, ${0.08 * p.z})`);
+      cloudGrad.addColorStop(1, 'rgba(200, 220, 255, 0)');
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, cloudR, cloudR * 0.5, i * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = cloudGrad;
+      ctx.fill();
+    }
+
+    ctx.restore();
+  },
+
+  drawAtmosphere(ctx, cx, cy, r) {
+    // Outer atmosphere glow
+    const atm1 = ctx.createRadialGradient(cx, cy, r * 0.97, cx, cy, r * 1.2);
+    atm1.addColorStop(0, 'rgba(60, 160, 255, 0.12)');
+    atm1.addColorStop(0.3, 'rgba(40, 120, 220, 0.06)');
+    atm1.addColorStop(0.7, 'rgba(20, 80, 180, 0.02)');
+    atm1.addColorStop(1, 'rgba(0, 40, 120, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2);
+    ctx.fillStyle = atm1;
+    ctx.fill();
+
+    // Inner rim light (sun side)
+    const sunAngle = -0.3; // sun direction
+    const sunX = cx + Math.cos(sunAngle) * r * 0.95;
+    const sunY = cy + Math.sin(sunAngle) * r * 0.95;
+    const rimGrad = ctx.createRadialGradient(sunX, sunY, r * 0.85, sunX, sunY, r * 1.1);
+    rimGrad.addColorStop(0, 'rgba(100, 200, 255, 0)');
+    rimGrad.addColorStop(0.5, 'rgba(80, 180, 255, 0.04)');
+    rimGrad.addColorStop(1, 'rgba(60, 160, 255, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2);
+    ctx.fillStyle = rimGrad;
+    ctx.fill();
+  },
+
+  drawSunHighlight(ctx, cx, cy, r) {
+    // Sun-side highlight on the globe
+    const sunX = cx - r * 0.35;
+    const sunY = cy - r * 0.35;
+    const highlight = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, r * 0.8);
+    highlight.addColorStop(0, 'rgba(150, 220, 255, 0.06)');
+    highlight.addColorStop(0.3, 'rgba(100, 180, 230, 0.03)');
+    highlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = highlight;
+    ctx.fill();
+    ctx.restore();
+  },
+
+  drawNightSide(ctx, cx, cy, r) {
+    // Darken the night side
+    const nightGrad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
+    nightGrad.addColorStop(0, 'rgba(0, 5, 15, 0.5)');
+    nightGrad.addColorStop(0.4, 'rgba(0, 5, 15, 0.2)');
+    nightGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
+    nightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.fillStyle = nightGrad;
+    ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.restore();
+  },
+
+  drawGridLines(ctx, cx, cy, r) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Latitude lines
+    for (let i = -3; i <= 3; i++) {
+      const lat = (i / 4) * Math.PI * 0.5;
+      const y = cy - Math.sin(lat) * r;
+      const w2 = Math.cos(lat) * r;
+      ctx.beginPath();
+      ctx.ellipse(cx, y, w2, w2 * 0.08, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(60, 120, 180, 0.12)';
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+
+    // Longitude lines
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI + this.rotation;
+      const cosA = Math.cos(angle);
+      const absCos = Math.abs(cosA);
+      if (absCos < 0.05) continue;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * absCos, r, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(60, 120, 180, ${0.08 + absCos * 0.04})`;
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  },
+
   animate() {
     if (!this.isDragging) this.rotation += this.rotationSpeed;
+    this.frameCount++;
 
     const ctx = this.ctx;
     const w = this.canvas.width;
@@ -992,79 +1276,77 @@ const GlobeRenderer = {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Globe body
+    // Star field
+    this.drawStars(ctx, w, h);
+
+    // Globe shadow (drop shadow)
+    ctx.beginPath();
+    const shadowGrad = ctx.createRadialGradient(cx + r * 0.15, cy + r * 0.15, r * 0.9, cx + r * 0.15, cy + r * 0.15, r * 1.3);
+    shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+    shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.arc(cx + r * 0.08, cy + r * 0.08, r * 1.15, 0, Math.PI * 2);
+    ctx.fillStyle = shadowGrad;
+    ctx.fill();
+
+    // Ocean
+    this.drawOcean(ctx, cx, cy, r);
+
+    // Grid lines (subtle)
+    this.drawGridLines(ctx, cx, cy, r);
+
+    // Continents
+    const DEG = Math.PI / 180;
+    for (const cont of CONTINENTS) {
+      this.drawContinent(ctx, cont, cx, cy, r, false);
+    }
+
+    // Sun highlight
+    this.drawSunHighlight(ctx, cx, cy, r);
+
+    // Night side shading
+    this.drawNightSide(ctx, cx, cy, r);
+
+    // Clouds
+    this.drawClouds(ctx, cx, cy, r);
+
+    // Globe edge (crisp border)
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.fillStyle = '#0d1520';
-    ctx.fill();
-    ctx.strokeStyle = '#1e3a5f';
+    ctx.strokeStyle = 'rgba(60, 140, 200, 0.25)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    // Latitude lines
-    for (let i = -3; i <= 3; i++) {
-      const lat = (i / 4) * Math.PI * 0.5;
-      const y = cy - Math.sin(lat) * r;
-      const w2 = Math.cos(lat) * r;
-      ctx.beginPath();
-      ctx.ellipse(cx, y, w2, w2 * 0.15, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = '#1a2a40';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
+    // Atmosphere
+    this.drawAtmosphere(ctx, cx, cy, r);
 
-    // Longitude lines
-    for (let i = 0; i < 8; i++) {
-      const angle = (i / 8) * Math.PI + this.rotation;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, r * Math.abs(Math.cos(angle)), r, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = '#1a2a40';
-      ctx.lineWidth = 0.8;
-      ctx.stroke();
-    }
-
-    // Points
+    // Event points
     for (let i = this.points.length - 1; i >= 0; i--) {
       const p = this.points[i];
       p.life -= 0.008;
       if (p.life <= 0) { this.points.splice(i, 1); continue; }
 
-      const cosLon = Math.cos(p.lon + this.rotation);
-      const sinLon = Math.sin(p.lon + this.rotation);
-      const cosLat = Math.cos(p.lat);
-      const sinLat = Math.sin(p.lat);
-      const x3d = cosLat * cosLon;
-      const z3d = cosLat * sinLon;
-      if (z3d < -0.1) continue;
+      const proj = this.project(p.lat, p.lon);
+      if (proj.z < 0.05) continue;
 
-      const sx = cx + x3d * r;
-      const sy = cy - sinLat * r;
-      const alpha = p.life;
+      const alpha = p.life * proj.z;
       const size = p.size * this.zoom * (1 + (1 - p.life) * 2);
 
-      const gradient = ctx.createRadialGradient(sx, sy, 0, sx, sy, size * 3);
-      gradient.addColorStop(0, `rgba(0, 230, 118, ${alpha * 0.8})`);
-      gradient.addColorStop(0.4, `rgba(0, 212, 255, ${alpha * 0.4})`);
+      // Outer glow
+      const gradient = ctx.createRadialGradient(proj.x, proj.y, 0, proj.x, proj.y, size * 4);
+      gradient.addColorStop(0, `rgba(0, 230, 118, ${alpha * 0.6})`);
+      gradient.addColorStop(0.3, `rgba(0, 212, 255, ${alpha * 0.3})`);
       gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
       ctx.beginPath();
-      ctx.arc(sx, sy, size * 3, 0, Math.PI * 2);
+      ctx.arc(proj.x, proj.y, size * 4, 0, Math.PI * 2);
       ctx.fillStyle = gradient;
       ctx.fill();
 
+      // Core
       ctx.beginPath();
-      ctx.arc(sx, sy, size * 0.5, 0, Math.PI * 2);
+      ctx.arc(proj.x, proj.y, size * 0.6, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
       ctx.fill();
     }
-
-    // Atmosphere glow
-    const atm = ctx.createRadialGradient(cx, cy, r * 0.95, cx, cy, r * 1.15);
-    atm.addColorStop(0, 'rgba(0, 150, 255, 0.08)');
-    atm.addColorStop(1, 'rgba(0, 150, 255, 0)');
-    ctx.beginPath();
-    ctx.arc(cx, cy, r * 1.15, 0, Math.PI * 2);
-    ctx.fillStyle = atm;
-    ctx.fill();
 
     this.animFrameId = requestAnimationFrame(() => this.animate());
   },
