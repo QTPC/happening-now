@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<title>Happening Now</title>
+<style>
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0e17;
+  color: #e0e6f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* === Header === */
+.header {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+  position: relative;
+}
+.header h1 {
+  font-size: 2rem;
+  background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+.header p { color: #8892a4; font-size: 0.95rem; }
+
+/* === Language Switcher === */
+.lang-switch {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  display: flex;
+  gap: 0;
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lang-switch button {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: none;
+  color: #8892a4;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.lang-switch button.active {
+  background: #00d4ff;
+  color: #0a0e17;
+  font-weight: 600;
+}
+.lang-switch button:hover:not(.active) {
+  color: #e0e6f0;
+}
+
+/* === Input Area === */
+.input-area {
+  max-width: 640px;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+}
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.input-row input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  background: #141924;
+  color: #e0e6f0;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input-row input:focus { border-color: #00d4ff; }
+.input-row button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+.input-row button:hover { opacity: 0.9; }
+.input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* === Presets === */
+.presets {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.presets button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #2a3040;
+  border-radius: 20px;
+  background: transparent;
+  color: #8892a4;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.presets button:hover {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+/* === Result Panel === */
+.result-panel {
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: none;
+}
+.result-panel.active { display: block; }
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* === Globe Container === */
+.globe-container {
+  position: relative;
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+.globe-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* === Result Info === */
+.result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.verdict-card {
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  padding: 1.5rem;
+  text-align: center;
+}
+.verdict-label {
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.5rem;
+}
+.verdict-value {
+  font-size: 2rem;
+  font-weight: bold;
+}
+.verdict-value.yes { color: #00e676; }
+.verdict-value.likely { color: #ffca28; }
+.verdict-value.unlikely { color: #ff7043; }
+.verdict-value.no { color: #ef5350; }
+
+.frequency-card, .reasoning-card, .counter-card, .chart-card {
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  padding: 1.25rem;
+}
+.card-title {
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.5rem;
+}
+.frequency-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #00d4ff;
+}
+.reasoning-text {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #b0b8c8;
+}
+.data-sources {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #6a7385;
+}
+.counter-digits {
+  font-size: 2.5rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #00e676;
+  letter-spacing: 0.05em;
+}
+.counter-elapsed {
+  font-size: 0.8rem;
+  color: #6a7385;
+  margin-top: 0.25rem;
+}
+.pulse-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00e676;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+.pulse-dot.active {
+  animation: pulse 0.6s ease-out;
+}
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* === Bar Chart === */
+.bar-chart { margin-top: 0.5rem; }
+.bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+.bar-label {
+  width: 120px;
+  color: #8892a4;
+  text-align: right;
+  padding-right: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-track {
+  flex: 1;
+  height: 16px;
+  background: #1e2530;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+.bar-fill.current { background: linear-gradient(90deg, #00d4ff, #7b2ff7); }
+.bar-fill.other { background: #2a3040; }
+.bar-value {
+  width: 80px;
+  padding-left: 0.5rem;
+  color: #6a7385;
+  font-size: 0.75rem;
+}
+
+/* === Settings Panel === */
+.settings-toggle {
+  text-align: center;
+  margin: 2rem 0 1rem;
+}
+.settings-toggle button {
+  background: none;
+  border: 1px solid #2a3040;
+  color: #8892a4;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.settings-toggle button:hover { border-color: #00d4ff; color: #00d4ff; }
+.settings-panel {
+  max-width: 500px;
+  margin: 0 auto 2rem;
+  padding: 0 1rem;
+  display: none;
+}
+.settings-panel.active { display: block; }
+.settings-panel .field {
+  margin-bottom: 0.75rem;
+}
+.settings-panel label {
+  display: block;
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.25rem;
+}
+.settings-panel input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  background: #141924;
+  color: #e0e6f0;
+  font-size: 0.9rem;
+  outline: none;
+}
+.settings-panel input:focus { border-color: #00d4ff; }
+.settings-panel button.save-btn {
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background: #00d4ff;
+  color: #0a0e17;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* === Loading State === */
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: #8892a4;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #2a3040;
+  border-top-color: #00d4ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* === Error State === */
+.error-msg {
+  background: #2a1520;
+  border: 1px solid #5a2030;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #ff7043;
+  text-align: center;
+}
+
+/* === Responsive === */
+@media (max-width: 700px) {
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+  .lang-switch {
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="lang-switch">
+    <button data-lang="zh" class="active">中文</button>
+    <button data-lang="en">EN</button>
+  </div>
+  <h1>Happening Now</h1>
+  <p data-i18n="subtitle">判断一件事是否每分每秒都在发生</p>
+</div>
+
+<div class="input-area">
+  <div class="input-row">
+    <input type="text" id="eventInput" data-i18n-placeholder="inputPlaceholder" placeholder="输入一个事件，例如：有人正在喝可口可乐" />
+    <button id="analyzeBtn" data-i18n="analyze">分析</button>
+  </div>
+  <div class="presets" id="presetContainer">
+    <!-- Presets rendered by JS based on language -->
+  </div>
+</div>
+
+<div id="resultPanel" class="result-panel">
+  <div class="result-grid">
+    <div class="globe-container">
+      <canvas id="globeCanvas"></canvas>
+    </div>
+    <div class="result-info">
+      <div class="verdict-card">
+        <div class="verdict-label" data-i18n="verdictLabel">结论</div>
+        <div id="verdictValue" class="verdict-value"></div>
+      </div>
+      <div class="frequency-card">
+        <div class="card-title" data-i18n="frequencyLabel">发生频率</div>
+        <div id="frequencyValue" class="frequency-value"></div>
+      </div>
+      <div class="counter-card">
+        <div class="card-title" data-i18n="counterLabel">实时计数（从分析开始）</div>
+        <div id="counterDigits" class="counter-digits">0</div>
+        <div id="counterElapsed" class="counter-elapsed"></div>
+        <span id="pulseDot" class="pulse-dot"></span>
+      </div>
+      <div class="reasoning-card">
+        <div class="card-title" data-i18n="reasoningLabel">推理依据</div>
+        <div id="reasoningText" class="reasoning-text"></div>
+        <div id="dataSources" class="data-sources"></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-title" data-i18n="chartLabel">频率对比</div>
+        <div id="barChart" class="bar-chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="settings-toggle">
+  <button id="settingsBtn" data-i18n="settingsBtn">⚙ API 设置</button>
+</div>
+<div id="settingsPanel" class="settings-panel">
+  <div class="field">
+    <label data-i18n="apiEndpoint">API 地址</label>
+    <input type="text" id="cfgEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+  </div>
+  <div class="field">
+    <label data-i18n="apiKey">API Key</label>
+    <input type="password" id="cfgApiKey" placeholder="sk-..." />
+  </div>
+  <div class="field">
+    <label data-i18n="modelName">模型名称</label>
+    <input type="text" id="cfgModel" placeholder="gpt-4o" />
+  </div>
+  <button class="save-btn" id="saveBtn" data-i18n="saveBtn">保存设置</button>
+</div>
+
+<script>
+// JS goes here — subsequent tasks fill in each section
+</script>
+</body>
+</html>
