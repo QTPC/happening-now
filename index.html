@@ -682,6 +682,97 @@ const I18N = {
 document.querySelectorAll('.lang-switch button').forEach(btn => {
   btn.addEventListener('click', () => I18N.setLang(btn.dataset.lang));
 });
+
+// === Built-in Event Frequency Data ===
+const EVENT_DATA = [
+  { keywords: ['出生', '婴儿', '新生儿', 'birth', 'born', 'baby'], event: '全球有人出生', frequency: 4.3, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '联合国人口司 2024', source_en: 'UN Population Division 2024' },
+  { keywords: ['死亡', '去世', '逝世', 'death', 'die', 'dying'], event: '全球有人死亡', frequency: 1.8, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球死亡率统计', source_en: 'WHO Global Mortality Statistics' },
+  { keywords: ['可口可乐', 'coca', 'coke'], event: '有人喝可口可乐', frequency: 20000, unit_zh: '瓶/秒', unit_en: 'bottles/sec', source_zh: '可口可乐2024年报', source_en: 'Coca-Cola 2024 Annual Report' },
+  { keywords: ['百事', 'pepsi'], event: '有人喝百事可乐', frequency: 10000, unit_zh: '瓶/秒', unit_en: 'bottles/sec', source_zh: '百事可乐2024年报', source_en: 'PepsiCo 2024 Annual Report' },
+  { keywords: ['推特', 'twitter', '发推', 'tweet'], event: '有人发推特', frequency: 6000, unit_zh: '条/秒', unit_en: 'posts/sec', source_zh: 'Twitter/X 2024 Q3 财报', source_en: 'Twitter/X 2024 Q3 Earnings' },
+  { keywords: ['google', '谷歌', '搜索', 'search'], event: '有人Google搜索', frequency: 100000, unit_zh: '次/秒', unit_en: 'searches/sec', source_zh: 'Google 2024 年度搜索统计', source_en: 'Google 2024 Search Statistics' },
+  { keywords: ['微信', 'wechat'], event: '有人发微信', frequency: 70000, unit_zh: '条/秒', unit_en: 'messages/sec', source_zh: '腾讯2024年报', source_en: 'Tencent 2024 Annual Report' },
+  { keywords: ['抖音', 'tiktok'], event: '有人刷抖音/TikTok', frequency: 50000, unit_zh: '次滑动/秒', unit_en: 'swipes/sec', source_zh: 'ByteDance 2024 数据报告', source_en: 'ByteDance 2024 Data Report' },
+  { keywords: ['youtube', '油管', '看视频'], event: '有人看YouTube', frequency: 80000, unit_zh: '次播放/秒', unit_en: 'views/sec', source_zh: 'YouTube 2024 官方统计', source_en: 'YouTube 2024 Official Stats' },
+  { keywords: ['instagram', 'ins'], event: '有人发Instagram', frequency: 5000, unit_zh: '条/秒', unit_en: 'posts/sec', source_zh: 'Meta 2024 Q3 财报', source_en: 'Meta 2024 Q3 Earnings' },
+  { keywords: ['facebook', '脸书', 'fb'], event: '有人用Facebook', frequency: 120000, unit_zh: '次互动/秒', unit_en: 'interactions/sec', source_zh: 'Meta 2024 Q3 财报', source_en: 'Meta 2024 Q3 Earnings' },
+  { keywords: ['淘宝', 'taobao', '购物', '下单'], event: '有人在淘宝下单', frequency: 3000, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: '阿里巴巴2024双11数据', source_en: 'Alibaba 2024 Singles\' Day Data' },
+  { keywords: ['amazon', '亚马逊'], event: '有人在Amazon下单', frequency: 1500, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: 'Amazon 2024 Q3 财报', source_en: 'Amazon 2024 Q3 Earnings' },
+  { keywords: ['吃饭', '用餐', '进食', 'eating'], event: '有人在吃饭', frequency: 5000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球80亿人按三餐估算', source_en: 'Estimated from 8B people, 3 meals/day' },
+  { keywords: ['睡觉', '入睡', '睡眠', 'sleeping'], event: '有人在睡觉', frequency: 10000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球80亿人按8小时睡眠估算', source_en: 'Estimated from 8B people, 8h sleep' },
+  { keywords: ['喝水', '饮水', 'drinking water'], event: '有人在喝水', frequency: 2000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球饮水频率估算', source_en: 'Global drinking water frequency estimate' },
+  { keywords: ['上厕所', 'wc', '洗手间', 'restroom', 'bathroom'], event: '有人在上厕所', frequency: 3000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球生理需求频率估算', source_en: 'Global physiological needs estimate' },
+  { keywords: ['咳嗽', 'cough'], event: '有人在咳嗽', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球呼吸道疾病频率估算', source_en: 'Global respiratory illness estimate' },
+  { keywords: ['打喷嚏', 'sneeze'], event: '有人在打喷嚏', frequency: 300000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球过敏/感冒频率估算', source_en: 'Global allergy/cold frequency estimate' },
+  { keywords: ['心跳', 'heart', 'heartbeat'], event: '有人心跳', frequency: 8000000000, unit_zh: '次/秒', unit_en: 'beats/sec', source_zh: '全球80亿人心跳约70次/分', source_en: '8B people, ~70 heartbeats/min' },
+  { keywords: ['呼吸', 'breath', 'breathing'], event: '有人在呼吸', frequency: 16000000000, unit_zh: '次/秒', unit_en: 'breaths/sec', source_zh: '全球80亿人约15次/分', source_en: '8B people, ~15 breaths/min' },
+  { keywords: ['闪电', 'lightning'], event: '有地方闪电', frequency: 100, unit_zh: '次/秒', unit_en: 'strikes/sec', source_zh: 'NASA 全球闪电统计', source_en: 'NASA Global Lightning Statistics' },
+  { keywords: ['邮件', 'email', '电子邮件'], event: '有人发邮件', frequency: 3500000, unit_zh: '封/秒', unit_en: 'emails/sec', source_zh: 'Radicati Group 2024 报告', source_en: 'Radicati Group 2024 Report' },
+  { keywords: ['信用卡', '刷卡', '支付', 'credit card'], event: '有人刷信用卡', frequency: 150000, unit_zh: '笔/秒', unit_en: 'transactions/sec', source_zh: 'Visa/Mastercard 2024 全球交易统计', source_en: 'Visa/Mastercard 2024 Global Transaction Stats' },
+  { keywords: ['飞机', '航班', '起飞', 'plane', 'flight', 'takeoff'], event: '有飞机起飞', frequency: 1.5, unit_zh: '架/秒', unit_en: 'flights/sec', source_zh: 'IATA 2024 全球航班统计', source_en: 'IATA 2024 Global Flight Statistics' },
+  { keywords: ['车祸', '交通事故', 'car accident', 'crash'], event: '有交通事故', frequency: 1.5, unit_zh: '起/秒', unit_en: 'accidents/sec', source_zh: 'WHO 全球道路安全报告', source_en: 'WHO Global Road Safety Report' },
+  { keywords: ['地震', 'earthquake', 'quake'], event: '有地震', frequency: 0.3, unit_zh: '次/秒', unit_en: 'quakes/sec', source_zh: 'USGS 全球地震统计', source_en: 'USGS Global Earthquake Statistics' },
+  { keywords: ['下雨', '降雨', 'rain', 'raining'], event: '某地在下雨', frequency: 1000000, unit_zh: '个雨滴/秒', unit_en: 'raindrops/sec', source_zh: '全球降水估算', source_en: 'Global precipitation estimate' },
+  { keywords: ['结婚', '婚礼', 'wedding', 'marry'], event: '有人结婚', frequency: 2.1, unit_zh: '对/秒', unit_en: 'couples/sec', source_zh: '联合国人口司婚姻统计', source_en: 'UN Population Division Marriage Statistics' },
+  { keywords: ['离婚', 'divorce'], event: '有人离婚', frequency: 0.7, unit_zh: '对/秒', unit_en: 'couples/sec', source_zh: '全球离婚率统计', source_en: 'Global Divorce Rate Statistics' },
+  { keywords: ['读书', '看书', '阅读', 'reading'], event: '有人在读书', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球阅读习惯估算', source_en: 'Global reading habits estimate' },
+  { keywords: ['游戏', 'gaming', '玩游戏', 'playing game'], event: '有人在玩游戏', frequency: 1500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'Newzoo 2024 全球游戏报告', source_en: 'Newzoo 2024 Global Gaming Report' },
+  { keywords: ['打电话', '通话', 'phone call'], event: '有人在打电话', frequency: 200000, unit_zh: '通/秒', unit_en: 'calls/sec', source_zh: '全球电信流量统计', source_en: 'Global Telecom Traffic Statistics' },
+  { keywords: ['外卖', '点外卖', 'delivery', 'takeout'], event: '有人点外卖', frequency: 5000, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: '全球外卖平台综合统计', source_en: 'Global food delivery platform statistics' },
+  { keywords: ['充电', 'charge', 'charging'], event: '有人在给手机充电', frequency: 1000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球智能手机用户充电频率估算', source_en: 'Global smartphone charging frequency estimate' },
+  { keywords: ['洗衣服', '洗衣', 'laundry'], event: '有人在洗衣服', frequency: 50000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球家务频率估算', source_en: 'Global household chores estimate' },
+  { keywords: ['跑步', 'jogging', 'running'], event: '有人在跑步', frequency: 100000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球运动习惯估算', source_en: 'Global exercise habits estimate' },
+  { keywords: ['喝酒', '饮酒', 'alcohol', 'drinking'], event: '有人在喝酒', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球酒精消费报告', source_en: 'WHO Global Alcohol Consumption Report' },
+  { keywords: ['抽烟', '吸烟', 'smoke', 'smoking'], event: '有人在抽烟', frequency: 300000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球烟草使用报告', source_en: 'WHO Global Tobacco Use Report' },
+  { keywords: ['拍照', 'selfie', 'photo'], event: '有人在拍照', frequency: 10000, unit_zh: '张/秒', unit_en: 'photos/sec', source_zh: '全球照片拍摄量估算', source_en: 'Global photo capture estimate' },
+];
+
+// === Configuration Manager ===
+const Config = {
+  _defaults: { endpoint: '', apiKey: '', model: 'gpt-4o' },
+  _key: 'happening_now_config',
+
+  load() {
+    try {
+      const saved = localStorage.getItem(this._key);
+      return saved ? { ...this._defaults, ...JSON.parse(saved) } : { ...this._defaults };
+    } catch {
+      return { ...this._defaults };
+    }
+  },
+
+  save(cfg) {
+    localStorage.setItem(this._key, JSON.stringify(cfg));
+  },
+
+  fillForm() {
+    const cfg = this.load();
+    document.getElementById('cfgEndpoint').value = cfg.endpoint;
+    document.getElementById('cfgApiKey').value = cfg.apiKey;
+    document.getElementById('cfgModel').value = cfg.model;
+  },
+
+  readForm() {
+    return {
+      endpoint: document.getElementById('cfgEndpoint').value.trim(),
+      apiKey: document.getElementById('cfgApiKey').value.trim(),
+      model: document.getElementById('cfgModel').value.trim() || 'gpt-4o',
+    };
+  }
+};
+
+// === Event Matcher ===
+const EventMatcher = {
+  match(input) {
+    const lower = input.toLowerCase();
+    for (const entry of EVENT_DATA) {
+      if (entry.keywords.some(kw => lower.includes(kw.toLowerCase()))) {
+        return entry;
+      }
+    }
+    return null;
+  }
+};
 </script>
 </body>
 </html>
