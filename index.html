@@ -444,6 +444,7 @@ const I18N = {
       inputPlaceholder: '输入一个事件，例如：有人正在喝可口可乐',
       analyze: '分析',
       analyzing: '分析中...',
+      analyzingEvent: '正在分析"{event}"...',
       verdictLabel: '结论',
       frequencyLabel: '发生频率',
       counterLabel: '实时计数（从分析开始）',
@@ -530,6 +531,7 @@ const I18N = {
       inputPlaceholder: 'Enter an event, e.g.: Someone is drinking Coca-Cola',
       analyze: 'Analyze',
       analyzing: 'Analyzing...',
+      analyzingEvent: 'Analyzing "{event}"...',
       verdictLabel: 'Verdict',
       frequencyLabel: 'Frequency',
       counterLabel: 'Live Counter (since analysis started)',
@@ -1249,7 +1251,7 @@ const App = {
     panel.innerHTML = `
       <div class="loading">
         <div class="spinner"></div>
-        <p>${I18N.lang === 'zh' ? '正在分析"' + escapeHtml(input) + '"...' : 'Analyzing "' + escapeHtml(input) + '"...'}</p>
+        <p>${escapeHtml(I18N.t('analyzingEvent').replace('{event}', input))}</p>
       </div>
     `;
 
@@ -1260,7 +1262,7 @@ const App = {
     } catch (err) {
       panel.innerHTML = `
         <div class="error-msg">
-          <p>${escapeHtml(I18N.t('analysisFailed'))}：${escapeHtml(err.message)}</p>
+          <p>${escapeHtml(I18N.t('analysisFailed'))}: ${escapeHtml(err.message)}</p>
           <p style="margin-top:0.5rem;font-size:0.85rem;color:#8892a4">${escapeHtml(I18N.t('checkApiOrNetwork'))}</p>
         </div>
       `;
