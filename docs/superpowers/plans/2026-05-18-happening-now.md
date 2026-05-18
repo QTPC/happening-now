@@ -1,0 +1,1625 @@
+# Happening Now — 事件实时发生判断器 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Build a single-file web app that judges whether a user-input event is happening every second globally, using local data + LLM reasoning, with an interactive Canvas globe, real-time visualizations, and Chinese/English i18n support.
+
+**Architecture:** Single `index.html` file with inlined CSS and JS, zero dependencies. The app has three logical layers: UI (HTML/CSS), business logic (event matching, API calls, i18n), and visualization (Canvas globe, counters, charts). All configuration stored in localStorage.
+
+**Tech Stack:** Vanilla HTML5/CSS3/JavaScript (ES6+), Canvas 2D API, OpenAI-compatible API (fetch)
+
+---
+
+## File Structure
+
+All code lives in a single file: `index.html`
+
+Logical sections within the file (top to bottom):
+
+| Section | Responsibility |
+|---------|---------------|
+| `<style>` | All CSS: layout, animations, responsive design |
+| `<body>` HTML | DOM structure with `data-i18n` attributes on all text elements |
+| `I18N` | Translation dictionary (zh/en) + language switching logic |
+| `EVENT_DATA` | Built-in frequency data table (~40 events, bilingual keywords) |
+| `Config` | localStorage read/write for API settings + language preference |
+| `LLMClient` | OpenAI-compatible API caller with language-aware prompts |
+| `EventMatcher` | Fuzzy keyword matching against local data |
+| `GlobeRenderer` | Canvas 2D earth with rotation, zoom, drag, light points |
+| `CounterManager` | Real-time odometer-style counter + elapsed time |
+| `FrequencyChart` | Bar chart comparing event frequency against others |
+| `App` | Main controller: orchestrates UI, matching, API, rendering |
+
+---
+
+### Task 1: HTML Skeleton + CSS Layout + Language Switcher
+
+**Files:**
+- Create: `index.html`
+
+- [ ] **Step 1: Create the HTML file with full page structure and data-i18n attributes**
+
+```html
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<title>Happening Now</title>
+<style>
+/* === Reset & Base === */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0a0e17;
+  color: #e0e6f0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* === Header === */
+.header {
+  text-align: center;
+  padding: 2rem 1rem 1rem;
+  position: relative;
+}
+.header h1 {
+  font-size: 2rem;
+  background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.5rem;
+}
+.header p { color: #8892a4; font-size: 0.95rem; }
+
+/* === Language Switcher === */
+.lang-switch {
+  position: absolute;
+  top: 1rem;
+  right: 1.5rem;
+  display: flex;
+  gap: 0;
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.lang-switch button {
+  padding: 0.3rem 0.7rem;
+  background: transparent;
+  border: none;
+  color: #8892a4;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.lang-switch button.active {
+  background: #00d4ff;
+  color: #0a0e17;
+  font-weight: 600;
+}
+.lang-switch button:hover:not(.active) {
+  color: #e0e6f0;
+}
+
+/* === Input Area === */
+.input-area {
+  max-width: 640px;
+  margin: 1.5rem auto;
+  padding: 0 1rem;
+}
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+.input-row input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border: 1px solid #2a3040;
+  border-radius: 8px;
+  background: #141924;
+  color: #e0e6f0;
+  font-size: 1rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input-row input:focus { border-color: #00d4ff; }
+.input-row button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #00d4ff, #7b2ff7);
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+.input-row button:hover { opacity: 0.9; }
+.input-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* === Presets === */
+.presets {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+.presets button {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #2a3040;
+  border-radius: 20px;
+  background: transparent;
+  color: #8892a4;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.presets button:hover {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+/* === Result Panel === */
+.result-panel {
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  display: none;
+}
+.result-panel.active { display: block; }
+.result-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+/* === Globe Container === */
+.globe-container {
+  position: relative;
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  overflow: hidden;
+  aspect-ratio: 1;
+}
+.globe-container canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* === Result Info === */
+.result-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.verdict-card {
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  padding: 1.5rem;
+  text-align: center;
+}
+.verdict-label {
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.5rem;
+}
+.verdict-value {
+  font-size: 2rem;
+  font-weight: bold;
+}
+.verdict-value.yes { color: #00e676; }
+.verdict-value.likely { color: #ffca28; }
+.verdict-value.unlikely { color: #ff7043; }
+.verdict-value.no { color: #ef5350; }
+
+.frequency-card, .reasoning-card, .counter-card, .chart-card {
+  background: #141924;
+  border-radius: 12px;
+  border: 1px solid #2a3040;
+  padding: 1.25rem;
+}
+.card-title {
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.5rem;
+}
+.frequency-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #00d4ff;
+}
+.reasoning-text {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: #b0b8c8;
+}
+.data-sources {
+  margin-top: 0.5rem;
+  font-size: 0.8rem;
+  color: #6a7385;
+}
+.counter-digits {
+  font-size: 2.5rem;
+  font-weight: bold;
+  font-family: 'Courier New', monospace;
+  color: #00e676;
+  letter-spacing: 0.05em;
+}
+.counter-elapsed {
+  font-size: 0.8rem;
+  color: #6a7385;
+  margin-top: 0.25rem;
+}
+.pulse-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #00e676;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+.pulse-dot.active {
+  animation: pulse 0.6s ease-out;
+}
+@keyframes pulse {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* === Bar Chart === */
+.bar-chart { margin-top: 0.5rem; }
+.bar-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.4rem;
+  font-size: 0.8rem;
+}
+.bar-label {
+  width: 120px;
+  color: #8892a4;
+  text-align: right;
+  padding-right: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-track {
+  flex: 1;
+  height: 16px;
+  background: #1e2530;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+  min-width: 2px;
+}
+.bar-fill.current { background: linear-gradient(90deg, #00d4ff, #7b2ff7); }
+.bar-fill.other { background: #2a3040; }
+.bar-value {
+  width: 80px;
+  padding-left: 0.5rem;
+  color: #6a7385;
+  font-size: 0.75rem;
+}
+
+/* === Settings Panel === */
+.settings-toggle {
+  text-align: center;
+  margin: 2rem 0 1rem;
+}
+.settings-toggle button {
+  background: none;
+  border: 1px solid #2a3040;
+  color: #8892a4;
+  padding: 0.4rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.settings-toggle button:hover { border-color: #00d4ff; color: #00d4ff; }
+.settings-panel {
+  max-width: 500px;
+  margin: 0 auto 2rem;
+  padding: 0 1rem;
+  display: none;
+}
+.settings-panel.active { display: block; }
+.settings-panel .field {
+  margin-bottom: 0.75rem;
+}
+.settings-panel label {
+  display: block;
+  font-size: 0.85rem;
+  color: #8892a4;
+  margin-bottom: 0.25rem;
+}
+.settings-panel input {
+  width: 100%;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  background: #141924;
+  color: #e0e6f0;
+  font-size: 0.9rem;
+  outline: none;
+}
+.settings-panel input:focus { border-color: #00d4ff; }
+.settings-panel button.save-btn {
+  padding: 0.6rem 1.5rem;
+  border: none;
+  border-radius: 6px;
+  background: #00d4ff;
+  color: #0a0e17;
+  font-size: 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* === Loading State === */
+.loading {
+  text-align: center;
+  padding: 3rem;
+  color: #8892a4;
+}
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #2a3040;
+  border-top-color: #00d4ff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1rem;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* === Error State === */
+.error-msg {
+  background: #2a1520;
+  border: 1px solid #5a2030;
+  border-radius: 8px;
+  padding: 1rem;
+  color: #ff7043;
+  text-align: center;
+}
+
+/* === Responsive === */
+@media (max-width: 700px) {
+  .result-grid {
+    grid-template-columns: 1fr;
+  }
+  .lang-switch {
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="lang-switch">
+    <button data-lang="zh" class="active">中文</button>
+    <button data-lang="en">EN</button>
+  </div>
+  <h1>Happening Now</h1>
+  <p data-i18n="subtitle">判断一件事是否每分每秒都在发生</p>
+</div>
+
+<div class="input-area">
+  <div class="input-row">
+    <input type="text" id="eventInput" data-i18n-placeholder="inputPlaceholder" placeholder="输入一个事件，例如：有人正在喝可口可乐" />
+    <button id="analyzeBtn" data-i18n="analyze">分析</button>
+  </div>
+  <div class="presets" id="presetContainer">
+    <!-- Presets rendered by JS based on language -->
+  </div>
+</div>
+
+<div id="resultPanel" class="result-panel">
+  <div class="result-grid">
+    <div class="globe-container">
+      <canvas id="globeCanvas"></canvas>
+    </div>
+    <div class="result-info">
+      <div class="verdict-card">
+        <div class="verdict-label" data-i18n="verdictLabel">结论</div>
+        <div id="verdictValue" class="verdict-value"></div>
+      </div>
+      <div class="frequency-card">
+        <div class="card-title" data-i18n="frequencyLabel">发生频率</div>
+        <div id="frequencyValue" class="frequency-value"></div>
+      </div>
+      <div class="counter-card">
+        <div class="card-title" data-i18n="counterLabel">实时计数（从分析开始）</div>
+        <div id="counterDigits" class="counter-digits">0</div>
+        <div id="counterElapsed" class="counter-elapsed"></div>
+        <span id="pulseDot" class="pulse-dot"></span>
+      </div>
+      <div class="reasoning-card">
+        <div class="card-title" data-i18n="reasoningLabel">推理依据</div>
+        <div id="reasoningText" class="reasoning-text"></div>
+        <div id="dataSources" class="data-sources"></div>
+      </div>
+      <div class="chart-card">
+        <div class="card-title" data-i18n="chartLabel">频率对比</div>
+        <div id="barChart" class="bar-chart"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="settings-toggle">
+  <button id="settingsBtn" data-i18n="settingsBtn">⚙ API 设置</button>
+</div>
+<div id="settingsPanel" class="settings-panel">
+  <div class="field">
+    <label data-i18n="apiEndpoint">API 地址</label>
+    <input type="text" id="cfgEndpoint" placeholder="https://api.openai.com/v1/chat/completions" />
+  </div>
+  <div class="field">
+    <label data-i18n="apiKey">API Key</label>
+    <input type="password" id="cfgApiKey" placeholder="sk-..." />
+  </div>
+  <div class="field">
+    <label data-i18n="modelName">模型名称</label>
+    <input type="text" id="cfgModel" placeholder="gpt-4o" />
+  </div>
+  <button class="save-btn" id="saveBtn" data-i18n="saveBtn">保存设置</button>
+</div>
+
+<script>
+// JS goes here — subsequent tasks fill in each section
+</script>
+</body>
+</html>
+```
+
+- [ ] **Step 2: Verify in browser**
+
+Open `index.html` in a browser. Expected: dark themed page with header, input box, language switcher (中文/EN) in top-right corner visible. Settings panel hidden. Result panel hidden. Preset buttons visible.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: HTML skeleton with CSS layout, data-i18n attributes, and language switcher"
+```
+
+---
+
+### Task 2: I18N Translation Module
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add the I18N module**
+
+```javascript
+// === Internationalization (i18n) ===
+const I18N = {
+  _lang: 'zh',
+  _key: 'happening_now_lang',
+
+  translations: {
+    zh: {
+      subtitle: '判断一件事是否每分每秒都在发生',
+      inputPlaceholder: '输入一个事件，例如：有人正在喝可口可乐',
+      analyze: '分析',
+      analyzing: '分析中...',
+      verdictLabel: '结论',
+      frequencyLabel: '发生频率',
+      counterLabel: '实时计数（从分析开始）',
+      reasoningLabel: '推理依据',
+      chartLabel: '频率对比',
+      settingsBtn: '⚙ API 设置',
+      apiEndpoint: 'API 地址',
+      apiKey: 'API Key',
+      modelName: '模型名称',
+      saveBtn: '保存设置',
+      settingsSaved: '设置已保存',
+      configureApi: '请先配置 API 设置',
+      configureApiHint: '点击下方 ⚙ API 设置 进行配置',
+      analysisFailed: '分析失败',
+      checkApiOrNetwork: '请检查 API 设置或网络连接',
+      noData: '无',
+      elapsedPrefix: '已过 ',
+      minutes: '分',
+      seconds: '秒',
+      perSecond: '/秒',
+      approxPerSec: '每秒约 ',
+      timesPerSec: ' 次',
+      approxEverySec: '约每 ',
+      secOnce: ' 秒一次',
+      approxEveryMin: '约每 ',
+      minOnce: ' 分钟一次',
+      veryLowFreq: '频率极低',
+      yesVerdict: '是，每秒都在发生',
+      likelyVerdict: '极有可能',
+      unlikelyVerdict: '偶尔发生',
+      noVerdict: '不太可能每秒都在发生',
+      presets: [
+        { emoji: '🥤', text: '喝可口可乐', event: '有人正在喝可口可乐' },
+        { emoji: '👶', text: '出生', event: '有人正在出生' },
+        { emoji: '🐦', text: '发推特', event: '有人正在发推特' },
+        { emoji: '💀', text: '死亡', event: '有人正在死亡' },
+        { emoji: '🔍', text: 'Google搜索', event: '有人正在Google搜索' },
+      ],
+      eventNames: {
+        '全球有人出生': '全球有人出生',
+        '全球有人死亡': '全球有人死亡',
+        '有人喝可口可乐': '有人喝可口可乐',
+        '有人喝百事可乐': '有人喝百事可乐',
+        '有人发推特': '有人发推特',
+        '有人Google搜索': '有人Google搜索',
+        '有人发微信': '有人发微信',
+        '有人刷抖音/TikTok': '有人刷抖音/TikTok',
+        '有人看YouTube': '有人看YouTube',
+        '有人发Instagram': '有人发Instagram',
+        '有人用Facebook': '有人用Facebook',
+        '有人在淘宝下单': '有人在淘宝下单',
+        '有人在Amazon下单': '有人在Amazon下单',
+        '有人在吃饭': '有人在吃饭',
+        '有人在睡觉': '有人在睡觉',
+        '有人在喝水': '有人在喝水',
+        '有人在上厕所': '有人在上厕所',
+        '有人在咳嗽': '有人在咳嗽',
+        '有人在打喷嚏': '有人在打喷嚏',
+        '有人心跳': '有人心跳',
+        '有人在呼吸': '有人在呼吸',
+        '有地方闪电': '有地方闪电',
+        '有人发邮件': '有人发邮件',
+        '有人刷信用卡': '有人刷信用卡',
+        '有飞机起飞': '有飞机起飞',
+        '有交通事故': '有交通事故',
+        '有地震': '有地震',
+        '某地在下雨': '某地在下雨',
+        '有人结婚': '有人结婚',
+        '有人离婚': '有人离婚',
+        '有人在读书': '有人在读书',
+        '有人在玩游戏': '有人在玩游戏',
+        '有人在打电话': '有人在打电话',
+        '有人点外卖': '有人点外卖',
+        '有人在给手机充电': '有人在给手机充电',
+        '有人在洗衣服': '有人在洗衣服',
+        '有人在跑步': '有人在跑步',
+        '有人在喝酒': '有人在喝酒',
+        '有人在抽烟': '有人在抽烟',
+        '有人在拍照': '有人在拍照',
+      },
+    },
+    en: {
+      subtitle: 'Is this happening somewhere in the world every single second?',
+      inputPlaceholder: 'Enter an event, e.g.: Someone is drinking Coca-Cola',
+      analyze: 'Analyze',
+      analyzing: 'Analyzing...',
+      verdictLabel: 'Verdict',
+      frequencyLabel: 'Frequency',
+      counterLabel: 'Live Counter (since analysis started)',
+      reasoningLabel: 'Reasoning',
+      chartLabel: 'Frequency Comparison',
+      settingsBtn: '⚙ API Settings',
+      apiEndpoint: 'API Endpoint',
+      apiKey: 'API Key',
+      modelName: 'Model Name',
+      saveBtn: 'Save Settings',
+      settingsSaved: 'Settings saved',
+      configureApi: 'Please configure API settings first',
+      configureApiHint: 'Click ⚙ API Settings below to configure',
+      analysisFailed: 'Analysis failed',
+      checkApiOrNetwork: 'Please check API settings or network connection',
+      noData: 'None',
+      elapsedPrefix: 'Elapsed: ',
+      minutes: 'm ',
+      seconds: 's',
+      perSecond: '/sec',
+      approxPerSec: '~',
+      timesPerSec: ' per sec',
+      approxEverySec: 'Every ~',
+      secOnce: ' sec',
+      approxEveryMin: 'Every ~',
+      minOnce: ' min',
+      veryLowFreq: 'Very low frequency',
+      yesVerdict: 'Yes, every second',
+      likelyVerdict: 'Very likely',
+      unlikelyVerdict: 'Occasionally',
+      noVerdict: 'Unlikely every second',
+      presets: [
+        { emoji: '🥤', text: 'Coca-Cola', event: 'Someone is drinking Coca-Cola' },
+        { emoji: '👶', text: 'Birth', event: 'Someone is being born' },
+        { emoji: '🐦', text: 'Tweet', event: 'Someone is posting a tweet' },
+        { emoji: '💀', text: 'Death', event: 'Someone is dying' },
+        { emoji: '🔍', text: 'Google', event: 'Someone is searching on Google' },
+      ],
+      eventNames: {
+        '全球有人出生': 'Someone is being born',
+        '全球有人死亡': 'Someone is dying',
+        '有人喝可口可乐': 'Someone is drinking Coca-Cola',
+        '有人喝百事可乐': 'Someone is drinking Pepsi',
+        '有人发推特': 'Someone is posting a tweet',
+        '有人Google搜索': 'Someone is searching on Google',
+        '有人发微信': 'Someone is sending a WeChat message',
+        '有人刷抖音/TikTok': 'Someone is scrolling TikTok',
+        '有人看YouTube': 'Someone is watching YouTube',
+        '有人发Instagram': 'Someone is posting on Instagram',
+        '有人用Facebook': 'Someone is using Facebook',
+        '有人在淘宝下单': 'Someone is ordering on Taobao',
+        '有人在Amazon下单': 'Someone is ordering on Amazon',
+        '有人在吃饭': 'Someone is eating',
+        '有人在睡觉': 'Someone is sleeping',
+        '有人在喝水': 'Someone is drinking water',
+        '有人在上厕所': 'Someone is using the restroom',
+        '有人在咳嗽': 'Someone is coughing',
+        '有人在打喷嚏': 'Someone is sneezing',
+        '有人心跳': 'Someone\'s heart is beating',
+        '有人在呼吸': 'Someone is breathing',
+        '有地方闪电': 'Lightning strikes somewhere',
+        '有人发邮件': 'Someone is sending an email',
+        '有人刷信用卡': 'Someone is swiping a credit card',
+        '有飞机起飞': 'A plane is taking off',
+        '有交通事故': 'A traffic accident occurs',
+        '有地震': 'An earthquake occurs',
+        '某地在下雨': 'It\'s raining somewhere',
+        '有人结婚': 'Someone is getting married',
+        '有人离婚': 'Someone is getting divorced',
+        '有人在读书': 'Someone is reading a book',
+        '有人在玩游戏': 'Someone is playing a game',
+        '有人在打电话': 'Someone is on a phone call',
+        '有人点外卖': 'Someone is ordering food delivery',
+        '有人在给手机充电': 'Someone is charging their phone',
+        '有人在洗衣服': 'Someone is doing laundry',
+        '有人在跑步': 'Someone is jogging',
+        '有人在喝酒': 'Someone is drinking alcohol',
+        '有人在抽烟': 'Someone is smoking',
+        '有人在拍照': 'Someone is taking a photo',
+      },
+    },
+  },
+
+  init() {
+    const saved = localStorage.getItem(this._key);
+    if (saved && (saved === 'zh' || saved === 'en')) {
+      this._lang = saved;
+    }
+    this.apply();
+    this.renderPresets();
+    this.updateLangButtons();
+  },
+
+  t(key) {
+    return this.translations[this._lang][key] || key;
+  },
+
+  getEventName(zhName) {
+    if (this._lang === 'zh') return zhName;
+    return this.translations.en.eventNames[zhName] || zhName;
+  },
+
+  get lang() {
+    return this._lang;
+  },
+
+  setLang(lang) {
+    if (lang !== 'zh' && lang !== 'en') return;
+    this._lang = lang;
+    localStorage.setItem(this._key, lang);
+    this.apply();
+    this.renderPresets();
+    this.updateLangButtons();
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  },
+
+  apply() {
+    // Apply text content
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const text = this.t(key);
+      if (text) el.textContent = text;
+    });
+
+    // Apply placeholders
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      const text = this.t(key);
+      if (text) el.placeholder = text;
+    });
+  },
+
+  renderPresets() {
+    const container = document.getElementById('presetContainer');
+    if (!container) return;
+    const presets = this.t('presets');
+    container.innerHTML = presets.map(p =>
+      `<button data-event="${p.event}">${p.emoji} ${p.text}</button>`
+    ).join('');
+  },
+
+  updateLangButtons() {
+    document.querySelectorAll('.lang-switch button').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.lang === this._lang);
+    });
+  }
+};
+```
+
+- [ ] **Step 2: Wire up language switcher events**
+
+Add after the I18N module definition (still inside `<script>`):
+
+```javascript
+// Language switcher events
+document.querySelectorAll('.lang-switch button').forEach(btn => {
+  btn.addEventListener('click', () => I18N.setLang(btn.dataset.lang));
+});
+```
+
+- [ ] **Step 3: Verify in browser**
+
+Open `index.html`:
+1. Default language is Chinese, presets show Chinese text
+2. Click "EN" → all UI text switches to English, presets change
+3. Refresh page → language preference persists
+4. Click "中文" → switches back
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add I18N module with zh/en translations and language switcher"
+```
+
+---
+
+### Task 3: Event Data Table + Config Manager
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add EVENT_DATA constant with bilingual keywords**
+
+```javascript
+// === Built-in Event Frequency Data ===
+const EVENT_DATA = [
+  { keywords: ['出生', '婴儿', '新生儿', 'birth', 'born', 'baby'], event: '全球有人出生', frequency: 4.3, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '联合国人口司 2024', source_en: 'UN Population Division 2024' },
+  { keywords: ['死亡', '去世', '逝世', 'death', 'die', 'dying'], event: '全球有人死亡', frequency: 1.8, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球死亡率统计', source_en: 'WHO Global Mortality Statistics' },
+  { keywords: ['可口可乐', 'coca', 'coke'], event: '有人喝可口可乐', frequency: 20000, unit_zh: '瓶/秒', unit_en: 'bottles/sec', source_zh: '可口可乐2024年报', source_en: 'Coca-Cola 2024 Annual Report' },
+  { keywords: ['百事', 'pepsi'], event: '有人喝百事可乐', frequency: 10000, unit_zh: '瓶/秒', unit_en: 'bottles/sec', source_zh: '百事可乐2024年报', source_en: 'PepsiCo 2024 Annual Report' },
+  { keywords: ['推特', 'twitter', '发推', 'tweet'], event: '有人发推特', frequency: 6000, unit_zh: '条/秒', unit_en: 'posts/sec', source_zh: 'Twitter/X 2024 Q3 财报', source_en: 'Twitter/X 2024 Q3 Earnings' },
+  { keywords: ['google', '谷歌', '搜索', 'search'], event: '有人Google搜索', frequency: 100000, unit_zh: '次/秒', unit_en: 'searches/sec', source_zh: 'Google 2024 年度搜索统计', source_en: 'Google 2024 Search Statistics' },
+  { keywords: ['微信', 'wechat'], event: '有人发微信', frequency: 70000, unit_zh: '条/秒', unit_en: 'messages/sec', source_zh: '腾讯2024年报', source_en: 'Tencent 2024 Annual Report' },
+  { keywords: ['抖音', 'tiktok'], event: '有人刷抖音/TikTok', frequency: 50000, unit_zh: '次滑动/秒', unit_en: 'swipes/sec', source_zh: 'ByteDance 2024 数据报告', source_en: 'ByteDance 2024 Data Report' },
+  { keywords: ['youtube', '油管', '看视频'], event: '有人看YouTube', frequency: 80000, unit_zh: '次播放/秒', unit_en: 'views/sec', source_zh: 'YouTube 2024 官方统计', source_en: 'YouTube 2024 Official Stats' },
+  { keywords: ['instagram', 'ins'], event: '有人发Instagram', frequency: 5000, unit_zh: '条/秒', unit_en: 'posts/sec', source_zh: 'Meta 2024 Q3 财报', source_en: 'Meta 2024 Q3 Earnings' },
+  { keywords: ['facebook', '脸书', 'fb'], event: '有人用Facebook', frequency: 120000, unit_zh: '次互动/秒', unit_en: 'interactions/sec', source_zh: 'Meta 2024 Q3 财报', source_en: 'Meta 2024 Q3 Earnings' },
+  { keywords: ['淘宝', 'taobao', '购物', '下单'], event: '有人在淘宝下单', frequency: 3000, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: '阿里巴巴2024双11数据', source_en: 'Alibaba 2024 Singles\' Day Data' },
+  { keywords: ['amazon', '亚马逊'], event: '有人在Amazon下单', frequency: 1500, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: 'Amazon 2024 Q3 财报', source_en: 'Amazon 2024 Q3 Earnings' },
+  { keywords: ['吃饭', '用餐', '进食', 'eating'], event: '有人在吃饭', frequency: 5000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球80亿人按三餐估算', source_en: 'Estimated from 8B people, 3 meals/day' },
+  { keywords: ['睡觉', '入睡', '睡眠', 'sleeping'], event: '有人在睡觉', frequency: 10000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球80亿人按8小时睡眠估算', source_en: 'Estimated from 8B people, 8h sleep' },
+  { keywords: ['喝水', '饮水', 'drinking water'], event: '有人在喝水', frequency: 2000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球饮水频率估算', source_en: 'Global drinking water frequency estimate' },
+  { keywords: ['上厕所', 'wc', '洗手间', 'restroom', 'bathroom'], event: '有人在上厕所', frequency: 3000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球生理需求频率估算', source_en: 'Global physiological needs estimate' },
+  { keywords: ['咳嗽', 'cough'], event: '有人在咳嗽', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球呼吸道疾病频率估算', source_en: 'Global respiratory illness estimate' },
+  { keywords: ['打喷嚏', 'sneeze'], event: '有人在打喷嚏', frequency: 300000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球过敏/感冒频率估算', source_en: 'Global allergy/cold frequency estimate' },
+  { keywords: ['心跳', 'heart', 'heartbeat'], event: '有人心跳', frequency: 8000000000, unit_zh: '次/秒', unit_en: 'beats/sec', source_zh: '全球80亿人心跳约70次/分', source_en: '8B people, ~70 heartbeats/min' },
+  { keywords: ['呼吸', 'breath', 'breathing'], event: '有人在呼吸', frequency: 16000000000, unit_zh: '次/秒', unit_en: 'breaths/sec', source_zh: '全球80亿人约15次/分', source_en: '8B people, ~15 breaths/min' },
+  { keywords: ['闪电', 'lightning'], event: '有地方闪电', frequency: 100, unit_zh: '次/秒', unit_en: 'strikes/sec', source_zh: 'NASA 全球闪电统计', source_en: 'NASA Global Lightning Statistics' },
+  { keywords: ['邮件', 'email', '电子邮件'], event: '有人发邮件', frequency: 3500000, unit_zh: '封/秒', unit_en: 'emails/sec', source_zh: 'Radicati Group 2024 报告', source_en: 'Radicati Group 2024 Report' },
+  { keywords: ['信用卡', '刷卡', '支付', 'credit card'], event: '有人刷信用卡', frequency: 150000, unit_zh: '笔/秒', unit_en: 'transactions/sec', source_zh: 'Visa/Mastercard 2024 全球交易统计', source_en: 'Visa/Mastercard 2024 Global Transaction Stats' },
+  { keywords: ['飞机', '航班', '起飞', 'plane', 'flight', 'takeoff'], event: '有飞机起飞', frequency: 1.5, unit_zh: '架/秒', unit_en: 'flights/sec', source_zh: 'IATA 2024 全球航班统计', source_en: 'IATA 2024 Global Flight Statistics' },
+  { keywords: ['车祸', '交通事故', 'car accident', 'crash'], event: '有交通事故', frequency: 1.5, unit_zh: '起/秒', unit_en: 'accidents/sec', source_zh: 'WHO 全球道路安全报告', source_en: 'WHO Global Road Safety Report' },
+  { keywords: ['地震', 'earthquake', 'quake'], event: '有地震', frequency: 0.3, unit_zh: '次/秒', unit_en: 'quakes/sec', source_zh: 'USGS 全球地震统计', source_en: 'USGS Global Earthquake Statistics' },
+  { keywords: ['下雨', '降雨', 'rain', 'raining'], event: '某地在下雨', frequency: 1000000, unit_zh: '个雨滴/秒', unit_en: 'raindrops/sec', source_zh: '全球降水估算', source_en: 'Global precipitation estimate' },
+  { keywords: ['结婚', '婚礼', 'wedding', 'marry'], event: '有人结婚', frequency: 2.1, unit_zh: '对/秒', unit_en: 'couples/sec', source_zh: '联合国人口司婚姻统计', source_en: 'UN Population Division Marriage Statistics' },
+  { keywords: ['离婚', 'divorce'], event: '有人离婚', frequency: 0.7, unit_zh: '对/秒', unit_en: 'couples/sec', source_zh: '全球离婚率统计', source_en: 'Global Divorce Rate Statistics' },
+  { keywords: ['读书', '看书', '阅读', 'reading'], event: '有人在读书', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球阅读习惯估算', source_en: 'Global reading habits estimate' },
+  { keywords: ['游戏', 'gaming', '玩游戏', 'playing game'], event: '有人在玩游戏', frequency: 1500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'Newzoo 2024 全球游戏报告', source_en: 'Newzoo 2024 Global Gaming Report' },
+  { keywords: ['打电话', '通话', 'phone call'], event: '有人在打电话', frequency: 200000, unit_zh: '通/秒', unit_en: 'calls/sec', source_zh: '全球电信流量统计', source_en: 'Global Telecom Traffic Statistics' },
+  { keywords: ['外卖', '点外卖', 'delivery', 'takeout'], event: '有人点外卖', frequency: 5000, unit_zh: '单/秒', unit_en: 'orders/sec', source_zh: '全球外卖平台综合统计', source_en: 'Global food delivery platform statistics' },
+  { keywords: ['充电', 'charge', 'charging'], event: '有人在给手机充电', frequency: 1000000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球智能手机用户充电频率估算', source_en: 'Global smartphone charging frequency estimate' },
+  { keywords: ['洗衣服', '洗衣', 'laundry'], event: '有人在洗衣服', frequency: 50000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球家务频率估算', source_en: 'Global household chores estimate' },
+  { keywords: ['跑步', 'jogging', 'running'], event: '有人在跑步', frequency: 100000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: '全球运动习惯估算', source_en: 'Global exercise habits estimate' },
+  { keywords: ['喝酒', '饮酒', 'alcohol', 'drinking'], event: '有人在喝酒', frequency: 500000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球酒精消费报告', source_en: 'WHO Global Alcohol Consumption Report' },
+  { keywords: ['抽烟', '吸烟', 'smoke', 'smoking'], event: '有人在抽烟', frequency: 300000, unit_zh: '人/秒', unit_en: 'people/sec', source_zh: 'WHO 全球烟草使用报告', source_en: 'WHO Global Tobacco Use Report' },
+  { keywords: ['拍照', 'selfie', 'photo'], event: '有人在拍照', frequency: 10000, unit_zh: '张/秒', unit_en: 'photos/sec', source_zh: '全球照片拍摄量估算', source_en: 'Global photo capture estimate' },
+];
+```
+
+- [ ] **Step 2: Add Config manager**
+
+```javascript
+// === Configuration Manager ===
+const Config = {
+  _defaults: { endpoint: '', apiKey: '', model: 'gpt-4o' },
+  _key: 'happening_now_config',
+
+  load() {
+    try {
+      const saved = localStorage.getItem(this._key);
+      return saved ? { ...this._defaults, ...JSON.parse(saved) } : { ...this._defaults };
+    } catch {
+      return { ...this._defaults };
+    }
+  },
+
+  save(cfg) {
+    localStorage.setItem(this._key, JSON.stringify(cfg));
+  },
+
+  fillForm() {
+    const cfg = this.load();
+    document.getElementById('cfgEndpoint').value = cfg.endpoint;
+    document.getElementById('cfgApiKey').value = cfg.apiKey;
+    document.getElementById('cfgModel').value = cfg.model;
+  },
+
+  readForm() {
+    return {
+      endpoint: document.getElementById('cfgEndpoint').value.trim(),
+      apiKey: document.getElementById('cfgApiKey').value.trim(),
+      model: document.getElementById('cfgModel').value.trim() || 'gpt-4o',
+    };
+  }
+};
+```
+
+- [ ] **Step 3: Add EventMatcher**
+
+```javascript
+// === Event Matcher ===
+const EventMatcher = {
+  match(input) {
+    const lower = input.toLowerCase();
+    for (const entry of EVENT_DATA) {
+      if (entry.keywords.some(kw => lower.includes(kw.toLowerCase()))) {
+        return entry;
+      }
+    }
+    return null;
+  }
+};
+```
+
+- [ ] **Step 4: Verify**
+
+Open `index.html` in browser console and test:
+```javascript
+EventMatcher.match('有人正在喝可口可乐')
+// Expected: entry with frequency: 20000
+
+EventMatcher.match('drinking Coca-Cola')
+// Expected: same entry (English keywords work)
+
+EventMatcher.match('abcxyz')
+// Expected: null
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add bilingual event data table, config manager, and event matcher"
+```
+
+---
+
+### Task 4: LLM Client (Language-Aware)
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add LLMClient with language-aware prompts**
+
+```javascript
+// === LLM Client ===
+const LLMClient = {
+  async analyze(eventDescription, localMatch) {
+    const cfg = Config.load();
+    if (!cfg.endpoint || !cfg.apiKey) {
+      throw new Error(I18N.t('configureApi'));
+    }
+
+    const isZh = I18N.lang === 'zh';
+
+    const systemPrompt = isZh
+      ? `你是一个数据分析师，负责判断一个事件是否"每分每秒"都在全球发生。你需要基于常识和已知数据进行推理。
+
+请严格以 JSON 格式回复，不要包含任何其他文字：
+{
+  "happening": true/false,
+  "confidence": "high" / "medium" / "low",
+  "frequency_per_second": 数字,
+  "reasoning": "推理过程",
+  "data_sources": ["数据来源1", "数据来源2"]
+}
+
+判断标准：
+- frequency_per_second >= 1：happening = true
+- 0.1 <= frequency < 1：happening = true（但频率较低）
+- frequency < 0.1：happening = false`
+      : `You are a data analyst. Determine whether a given event is happening "every single second" somewhere in the world. Reason based on common sense and known data.
+
+Respond strictly in JSON format, no other text:
+{
+  "happening": true/false,
+  "confidence": "high" / "medium" / "low",
+  "frequency_per_second": number,
+  "reasoning": "your reasoning",
+  "data_sources": ["source1", "source2"]
+}
+
+Criteria:
+- frequency_per_second >= 1: happening = true
+- 0.1 <= frequency < 1: happening = true (but less frequent)
+- frequency < 0.1: happening = false`;
+
+    let userPrompt = isZh
+      ? `请分析这个事件是否每分每秒都在发生："${eventDescription}"`
+      : `Analyze whether this event is happening every second somewhere in the world: "${eventDescription}"`;
+
+    if (localMatch) {
+      const unit = isZh ? localMatch.unit_zh : localMatch.unit_en;
+      const source = isZh ? localMatch.source_zh : localMatch.source_en;
+      const eventName = I18N.getEventName(localMatch.event);
+      userPrompt += isZh
+        ? `\n\n参考数据：根据内置数据库，类似事件"${eventName}"的频率约为 ${localMatch.frequency} ${unit}（来源：${source}）。请基于此数据进行更精确的分析。`
+        : `\n\nReference data: According to our database, a similar event "${eventName}" occurs at approximately ${localMatch.frequency} ${unit} (source: ${source}). Please use this data for a more precise analysis.`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const res = await fetch(cfg.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`API ${res.status}: ${errBody}`);
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error('API returned empty content');
+
+      return this.parseResponse(content);
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === 'AbortError') {
+        throw new Error(isZh ? '请求超时（15秒），请检查网络或 API 地址' : 'Request timeout (15s), check network or API endpoint');
+      }
+      throw err;
+    }
+  },
+
+  parseResponse(content) {
+    try { return JSON.parse(content); } catch {}
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) { try { return JSON.parse(jsonMatch[1]); } catch {} }
+    const braceMatch = content.match(/\{[\s\S]*\}/);
+    if (braceMatch) { try { return JSON.parse(braceMatch[0]); } catch {} }
+    throw new Error(I18N.lang === 'zh' ? '无法解析 AI 返回的结果，请重试' : 'Failed to parse AI response, please retry');
+  }
+};
+```
+
+- [ ] **Step 2: Verify structure**
+
+Open browser console:
+```javascript
+typeof LLMClient.analyze // 'function'
+typeof LLMClient.parseResponse // 'function'
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add LLM client with language-aware prompts"
+```
+
+---
+
+### Task 5: Globe Renderer (Canvas 2D)
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add GlobeRenderer**
+
+```javascript
+// === Globe Renderer ===
+const GlobeRenderer = {
+  canvas: null,
+  ctx: null,
+  rotation: 0,
+  rotationSpeed: 0.003,
+  zoom: 1,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartRotation: 0,
+  points: [],
+  animFrameId: null,
+  radius: 0,
+  centerX: 0,
+  centerY: 0,
+
+  init(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    this.ctx = this.canvas.getContext('2d');
+    this.resize();
+    this.bindEvents();
+    this.animate();
+  },
+
+  resize() {
+    const container = this.canvas.parentElement;
+    const size = Math.min(container.clientWidth, container.clientHeight);
+    this.canvas.width = size * 2;
+    this.canvas.height = size * 2;
+    this.canvas.style.width = size + 'px';
+    this.canvas.style.height = size + 'px';
+    this.radius = size * 0.4;
+    this.centerX = size;
+    this.centerY = size;
+  },
+
+  bindEvents() {
+    this.canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      this.zoom = Math.max(0.3, Math.min(3, this.zoom + (e.deltaY > 0 ? -0.1 : 0.1)));
+    }, { passive: false });
+
+    this.canvas.addEventListener('mousedown', (e) => {
+      this.isDragging = true;
+      this.dragStartX = e.clientX;
+      this.dragStartRotation = this.rotation;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!this.isDragging) return;
+      this.rotation = this.dragStartRotation + (e.clientX - this.dragStartX) * 0.005;
+    });
+
+    window.addEventListener('mouseup', () => { this.isDragging = false; });
+
+    this.canvas.addEventListener('dblclick', () => {
+      this.zoom = 1;
+      this.rotation = 0;
+    });
+
+    // Touch support
+    let lastPinchDist = 0;
+    this.canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        this.isDragging = true;
+        this.dragStartX = e.touches[0].clientX;
+        this.dragStartRotation = this.rotation;
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+      }
+    }, { passive: true });
+
+    this.canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1 && this.isDragging) {
+        this.rotation = this.dragStartRotation + (e.touches[0].clientX - this.dragStartX) * 0.005;
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        this.zoom = Math.max(0.3, Math.min(3, this.zoom + (dist - lastPinchDist) * 0.005));
+        lastPinchDist = dist;
+      }
+    }, { passive: true });
+
+    this.canvas.addEventListener('touchend', () => { this.isDragging = false; });
+    window.addEventListener('resize', () => this.resize());
+  },
+
+  addPoint() {
+    const lat = (Math.random() - 0.5) * Math.PI * 0.8;
+    const lon = Math.random() * Math.PI * 2 - Math.PI;
+    this.points.push({ lat, lon, life: 1.0, size: 2 + Math.random() * 3 });
+  },
+
+  animate() {
+    if (!this.isDragging) this.rotation += this.rotationSpeed;
+
+    const ctx = this.ctx;
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const r = this.radius * this.zoom;
+    const cx = this.centerX;
+    const cy = this.centerY;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Globe body
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = '#0d1520';
+    ctx.fill();
+    ctx.strokeStyle = '#1e3a5f';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Latitude lines
+    for (let i = -3; i <= 3; i++) {
+      const lat = (i / 4) * Math.PI * 0.5;
+      const y = cy - Math.sin(lat) * r;
+      const w2 = Math.cos(lat) * r;
+      ctx.beginPath();
+      ctx.ellipse(cx, y, w2, w2 * 0.15, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#1a2a40';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    // Longitude lines
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI + this.rotation;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, r * Math.abs(Math.cos(angle)), r, 0, 0, Math.PI * 2);
+      ctx.strokeStyle = '#1a2a40';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+
+    // Points
+    for (let i = this.points.length - 1; i >= 0; i--) {
+      const p = this.points[i];
+      p.life -= 0.008;
+      if (p.life <= 0) { this.points.splice(i, 1); continue; }
+
+      const cosLon = Math.cos(p.lon + this.rotation);
+      const sinLon = Math.sin(p.lon + this.rotation);
+      const cosLat = Math.cos(p.lat);
+      const sinLat = Math.sin(p.lat);
+      const x3d = cosLat * cosLon;
+      const z3d = cosLat * sinLon;
+      if (z3d < -0.1) continue;
+
+      const sx = cx + x3d * r;
+      const sy = cy - sinLat * r;
+      const alpha = p.life;
+      const size = p.size * this.zoom * (1 + (1 - p.life) * 2);
+
+      const gradient = ctx.createRadialGradient(sx, sy, 0, sx, sy, size * 3);
+      gradient.addColorStop(0, `rgba(0, 230, 118, ${alpha * 0.8})`);
+      gradient.addColorStop(0.4, `rgba(0, 212, 255, ${alpha * 0.4})`);
+      gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+      ctx.beginPath();
+      ctx.arc(sx, sy, size * 3, 0, Math.PI * 2);
+      ctx.fillStyle = gradient;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(sx, sy, size * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+      ctx.fill();
+    }
+
+    // Atmosphere glow
+    const atm = ctx.createRadialGradient(cx, cy, r * 0.95, cx, cy, r * 1.15);
+    atm.addColorStop(0, 'rgba(0, 150, 255, 0.08)');
+    atm.addColorStop(1, 'rgba(0, 150, 255, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * 1.15, 0, Math.PI * 2);
+    ctx.fillStyle = atm;
+    ctx.fill();
+
+    this.animFrameId = requestAnimationFrame(() => this.animate());
+  },
+
+  setPointRate(frequencyPerSecond) {
+    const interval = frequencyPerSecond >= 1
+      ? Math.max(50, 1000 / Math.min(frequencyPerSecond, 20))
+      : Math.min(2000, 1000 / frequencyPerSecond);
+    if (this._pointInterval) clearInterval(this._pointInterval);
+    this._pointInterval = setInterval(() => this.addPoint(), interval);
+  },
+
+  destroy() {
+    if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
+    if (this._pointInterval) clearInterval(this._pointInterval);
+  }
+};
+```
+
+- [ ] **Step 2: Verify in browser**
+
+Temporarily add before `</script>`:
+```javascript
+GlobeRenderer.init('globeCanvas');
+GlobeRenderer.setPointRate(5);
+```
+Expected: dark globe rotating, green light points appearing and fading. Mouse drag rotates, scroll zooms, double-click resets. Pinch zoom on mobile. Remove test code after verification.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add Canvas globe with rotation, zoom, drag, touch pinch, and light points"
+```
+
+---
+
+### Task 6: Counter Manager + Frequency Chart
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add CounterManager (i18n-aware)**
+
+```javascript
+// === Counter Manager ===
+const CounterManager = {
+  startTime: null,
+  frequency: 0,
+  intervalId: null,
+  lastPulse: 0,
+
+  start(frequencyPerSecond) {
+    this.stop();
+    this.startTime = Date.now();
+    this.frequency = frequencyPerSecond;
+    this.lastPulse = 0;
+    this.intervalId = setInterval(() => this.update(), 50);
+    this.update();
+  },
+
+  update() {
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    const count = this.frequency * elapsed;
+
+    const digits = document.getElementById('counterDigits');
+    if (digits) {
+      const formatted = count >= 1000000
+        ? (count / 1000000).toFixed(2) + 'M'
+        : count >= 1000
+          ? (count / 1000).toFixed(1) + 'K'
+          : Math.floor(count).toLocaleString();
+      digits.textContent = formatted;
+    }
+
+    const elapsedEl = document.getElementById('counterElapsed');
+    if (elapsedEl) {
+      const min = Math.floor(elapsed / 60);
+      const sec = Math.floor(elapsed % 60);
+      elapsedEl.textContent = I18N.t('elapsedPrefix') +
+        (min > 0 ? min + I18N.t('minutes') : '') +
+        sec + I18N.t('seconds');
+    }
+
+    const pulsesNow = Math.floor(count);
+    if (pulsesNow > this.lastPulse) {
+      this.lastPulse = pulsesNow;
+      const dot = document.getElementById('pulseDot');
+      if (dot) {
+        dot.classList.remove('active');
+        void dot.offsetWidth;
+        dot.classList.add('active');
+      }
+    }
+  },
+
+  stop() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+  }
+};
+```
+
+- [ ] **Step 2: Add FrequencyChart (i18n-aware)**
+
+```javascript
+// === Frequency Chart ===
+const FrequencyChart = {
+  render(currentEventName, currentFrequency) {
+    const container = document.getElementById('barChart');
+    if (!container) return;
+
+    const comparisons = EVENT_DATA
+      .filter(e => e.frequency !== currentFrequency)
+      .sort((a, b) => Math.abs(Math.log(a.frequency) - Math.log(currentFrequency)) - Math.abs(Math.log(b.frequency) - Math.log(currentFrequency)))
+      .slice(0, 5);
+
+    const all = [
+      { event: currentEventName, frequency: currentFrequency, isCurrent: true },
+      ...comparisons.map(e => ({ event: I18N.getEventName(e.event), frequency: e.frequency, isCurrent: false }))
+    ];
+
+    all.sort((a, b) => b.frequency - a.frequency);
+    const maxFreq = all[0].frequency;
+    const perSecLabel = I18N.t('perSecond');
+
+    container.innerHTML = all.map(item => {
+      const pct = Math.max(1, (Math.log10(item.frequency + 1) / Math.log10(maxFreq + 1)) * 100);
+      const freqStr = item.frequency >= 1000000
+        ? (item.frequency / 1000000).toFixed(1) + 'M'
+        : item.frequency >= 1000
+          ? (item.frequency / 1000).toFixed(1) + 'K'
+          : item.frequency.toFixed(1);
+      const fillClass = item.isCurrent ? 'current' : 'other';
+      return `
+        <div class="bar-row">
+          <div class="bar-label" title="${item.event}">${item.event}</div>
+          <div class="bar-track">
+            <div class="bar-fill ${fillClass}" style="width: ${pct}%"></div>
+          </div>
+          <div class="bar-value">${freqStr}${perSecLabel}</div>
+        </div>
+      `;
+    }).join('');
+  }
+};
+```
+
+- [ ] **Step 3: Verify in browser console**
+
+```javascript
+I18N.init();
+CounterManager.start(4.3);
+FrequencyChart.render('全球有人出生', 4.3);
+```
+Expected: counter ticking up with Chinese elapsed text, bar chart showing birth vs other events. Switch to English and verify text changes.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add i18n-aware real-time counter and frequency chart"
+```
+
+---
+
+### Task 7: App Controller (Wire Everything Together)
+
+**Files:**
+- Modify: `index.html` (inside `<script>` tag)
+
+- [ ] **Step 1: Add XSS protection helper**
+
+```javascript
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+```
+
+- [ ] **Step 2: Add App controller**
+
+```javascript
+// === App Controller ===
+const App = {
+  init() {
+    I18N.init();
+    Config.fillForm();
+    this.bindEvents();
+  },
+
+  bindEvents() {
+    document.getElementById('analyzeBtn').addEventListener('click', () => this.analyze());
+
+    document.getElementById('eventInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.analyze();
+    });
+
+    // Preset clicks use event delegation since presets are dynamically rendered
+    document.getElementById('presetContainer').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-event]');
+      if (btn) {
+        document.getElementById('eventInput').value = btn.dataset.event;
+        this.analyze();
+      }
+    });
+
+    document.getElementById('settingsBtn').addEventListener('click', () => {
+      document.getElementById('settingsPanel').classList.toggle('active');
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      Config.save(Config.readForm());
+      document.getElementById('settingsPanel').classList.remove('active');
+      alert(I18N.t('settingsSaved'));
+    });
+  },
+
+  async analyze() {
+    const input = document.getElementById('eventInput').value.trim();
+    if (!input) return;
+
+    const btn = document.getElementById('analyzeBtn');
+    const panel = document.getElementById('resultPanel');
+
+    // Check API config
+    const cfg = Config.load();
+    if (!cfg.endpoint || !cfg.apiKey) {
+      panel.classList.add('active');
+      panel.innerHTML = `
+        <div class="error-msg">
+          <p>${escapeHtml(I18N.t('configureApi'))}</p>
+          <p style="margin-top:0.5rem;font-size:0.85rem;color:#8892a4">${escapeHtml(I18N.t('configureApiHint'))}</p>
+        </div>
+      `;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = I18N.t('analyzing');
+
+    panel.classList.add('active');
+    panel.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>${I18N.lang === 'zh' ? '正在分析"' + escapeHtml(input) + '"...' : 'Analyzing "' + escapeHtml(input) + '"...'}</p>
+      </div>
+    `;
+
+    try {
+      const localMatch = EventMatcher.match(input);
+      const result = await LLMClient.analyze(input, localMatch);
+      this.renderResult(input, result, localMatch);
+    } catch (err) {
+      panel.innerHTML = `
+        <div class="error-msg">
+          <p>${escapeHtml(I18N.t('analysisFailed'))}：${escapeHtml(err.message)}</p>
+          <p style="margin-top:0.5rem;font-size:0.85rem;color:#8892a4">${escapeHtml(I18N.t('checkApiOrNetwork'))}</p>
+        </div>
+      `;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = I18N.t('analyze');
+    }
+  },
+
+  renderResult(input, result, localMatch) {
+    const panel = document.getElementById('resultPanel');
+    const freq = result.frequency_per_second || 0;
+    const verdict = this.getVerdict(freq);
+    const eventName = localMatch ? I18N.getEventName(localMatch.event) : input;
+
+    panel.innerHTML = `
+      <div class="result-grid">
+        <div class="globe-container">
+          <canvas id="globeCanvas"></canvas>
+        </div>
+        <div class="result-info">
+          <div class="verdict-card">
+            <div class="verdict-label">${escapeHtml(I18N.t('verdictLabel'))}</div>
+            <div class="verdict-value ${verdict.class}">${escapeHtml(verdict.text)}</div>
+          </div>
+          <div class="frequency-card">
+            <div class="card-title">${escapeHtml(I18N.t('frequencyLabel'))}</div>
+            <div class="frequency-value">${escapeHtml(this.formatFrequency(freq))}</div>
+          </div>
+          <div class="counter-card">
+            <div class="card-title">${escapeHtml(I18N.t('counterLabel'))}</div>
+            <div id="counterDigits" class="counter-digits">0</div>
+            <div id="counterElapsed" class="counter-elapsed"></div>
+            <span id="pulseDot" class="pulse-dot"></span>
+          </div>
+          <div class="reasoning-card">
+            <div class="card-title">${escapeHtml(I18N.t('reasoningLabel'))}</div>
+            <div class="reasoning-text">${escapeHtml(result.reasoning || I18N.t('noData'))}</div>
+            <div class="data-sources">${(result.data_sources || []).map(s => '📊 ' + escapeHtml(s)).join('<br>')}</div>
+          </div>
+          <div class="chart-card">
+            <div class="card-title">${escapeHtml(I18N.t('chartLabel'))}</div>
+            <div id="barChart" class="bar-chart"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    GlobeRenderer.destroy();
+    GlobeRenderer.init('globeCanvas');
+    GlobeRenderer.setPointRate(freq);
+
+    CounterManager.start(freq);
+
+    FrequencyChart.render(eventName, freq);
+  },
+
+  getVerdict(freq) {
+    if (freq >= 1) return { text: I18N.t('yesVerdict'), class: 'yes' };
+    if (freq >= 0.1) return { text: I18N.t('likelyVerdict'), class: 'likely' };
+    if (freq >= 0.01) return { text: I18N.t('unlikelyVerdict'), class: 'unlikely' };
+    return { text: I18N.t('noVerdict'), class: 'no' };
+  },
+
+  formatFrequency(freq) {
+    if (freq >= 1000000) return I18N.t('approxPerSec') + (freq / 1000000).toFixed(1) + 'M' + I18N.t('timesPerSec');
+    if (freq >= 1000) return I18N.t('approxPerSec') + (freq / 1000).toFixed(1) + 'K' + I18N.t('timesPerSec');
+    if (freq >= 1) return I18N.t('approxPerSec') + freq.toFixed(1) + I18N.t('timesPerSec');
+    if (freq >= 0.1) return I18N.t('approxEverySec') + (1 / freq).toFixed(0) + I18N.t('secOnce');
+    if (freq >= 0.01) return I18N.t('approxEveryMin') + (1 / freq / 60).toFixed(0) + I18N.t('minOnce');
+    return I18N.t('veryLowFreq');
+  }
+};
+
+// === Bootstrap ===
+App.init();
+```
+
+- [ ] **Step 3: Full integration test**
+
+1. Open `index.html` in browser
+2. Default language: Chinese. Click preset → loading → globe + verdict + counter + chart
+3. Switch to English → all UI text changes, presets change
+4. Click English preset → analysis in English
+5. Globe: rotation, light points, scroll zoom, drag rotate, double-click reset
+6. Counter ticks up, pulse dot flashes, bar chart shows comparison
+7. No API key → friendly error in current language
+8. Settings save/load persists across refresh
+9. Language preference persists across refresh
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add index.html
+git commit -m "feat: add app controller with full i18n integration, XSS protection, wiring"
+```
+
+---
+
+### Task 8: Final Polish
+
+**Files:**
+- Modify: `index.html`
+
+- [ ] **Step 1: Update `<title>` to be bilingual**
+
+The title is already "Happening Now" which works for both languages. No change needed.
+
+- [ ] **Step 2: Final end-to-end test checklist**
+
+1. Open page → dark theme, header, input, presets, language switcher visible
+2. Language: default zh, switch to en, switch back, refresh → persists
+3. Presets update when language switches
+4. Click preset → loading → result panel with all components
+5. Globe: rotation, light points, scroll zoom, drag rotate, pinch zoom, double-click reset
+6. Counter: numbers tick up, elapsed time in current language
+7. Pulse dot flashes
+8. Bar chart: event names in current language
+9. Verdict and frequency text in current language
+10. Reasoning and data sources displayed
+11. Enter custom event → AI analysis works
+12. No API key → error in current language
+13. Settings: save/load persists
+14. Mobile responsive: grid stacks on narrow screens
+15. XSS: AI output is escaped
+
+- [ ] **Step 3: Final commit**
+
+```bash
+git add index.html
+git commit -m "feat: final polish - complete i18n, all features verified"
+```
