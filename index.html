@@ -9,9 +9,15 @@
 </head>
 <body>
 <div class="header">
-  <div class="lang-switch">
-    <button data-lang="zh" class="active" aria-pressed="true">中文</button>
-    <button data-lang="en" aria-pressed="false">EN</button>
+  <div class="top-controls">
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+      <span class="icon-moon">🌙</span>
+      <span class="icon-sun">☀️</span>
+    </button>
+    <div class="lang-switch">
+      <button data-lang="zh" class="active" aria-pressed="true">中文</button>
+      <button data-lang="en" aria-pressed="false">EN</button>
+    </div>
   </div>
   <h1>Happening Now</h1>
   <p data-i18n="subtitle">判断一件事是否每分每秒都在发生</p>

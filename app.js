@@ -1,3 +1,27 @@
+// === Theme Manager ===
+const ThemeManager = {
+  _key: 'happening_now_theme',
+
+  init() {
+    const saved = localStorage.getItem(this._key);
+    if (saved === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+    document.getElementById('themeToggle').addEventListener('click', () => this.toggle());
+  },
+
+  toggle() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    if (isLight) {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem(this._key, 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+      localStorage.setItem(this._key, 'light');
+    }
+  }
+};
+
 // === Internationalization (i18n) ===
 const I18N = {
   _lang: 'zh',
@@ -606,10 +630,15 @@ const GlobeRenderer = {
     return { x: cx + x3d * r, y: cy - y3d * r, z: z3d };
   },
 
+  isLight() {
+    return document.documentElement.getAttribute('data-theme') === 'light';
+  },
+
   drawStars(ctx, w, h) {
+    const light = this.isLight();
     for (const s of STARS) {
       const twinkle = Math.sin(this.frameCount * s.twinkleSpeed + s.twinkleOffset) * 0.3 + 0.7;
-      const alpha = s.brightness * twinkle;
+      const alpha = s.brightness * twinkle * (light ? 0.15 : 1);
       ctx.beginPath();
       ctx.arc(s.x, s.y, s.size, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(200, 220, 255, ${alpha})`;
@@ -618,11 +647,19 @@ const GlobeRenderer = {
   },
 
   drawOcean(ctx, cx, cy, r) {
+    const light = this.isLight();
     const oceanGrad = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.1, cx, cy, r);
-    oceanGrad.addColorStop(0, '#1a3a5c');
-    oceanGrad.addColorStop(0.5, '#0f2847');
-    oceanGrad.addColorStop(0.8, '#0a1e3a');
-    oceanGrad.addColorStop(1, '#061428');
+    if (light) {
+      oceanGrad.addColorStop(0, '#7ab8d4');
+      oceanGrad.addColorStop(0.5, '#5a9ab8');
+      oceanGrad.addColorStop(0.8, '#4a8aa8');
+      oceanGrad.addColorStop(1, '#3a7a98');
+    } else {
+      oceanGrad.addColorStop(0, '#1a3a5c');
+      oceanGrad.addColorStop(0.5, '#0f2847');
+      oceanGrad.addColorStop(0.8, '#0a1e3a');
+      oceanGrad.addColorStop(1, '#061428');
+    }
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fillStyle = oceanGrad;
@@ -630,12 +667,12 @@ const GlobeRenderer = {
 
     ctx.save();
     ctx.clip();
-    ctx.globalAlpha = 0.03;
+    ctx.globalAlpha = light ? 0.06 : 0.03;
     for (let y = cy - r; y < cy + r; y += 4) {
       ctx.beginPath();
       ctx.moveTo(cx - r, y);
       ctx.lineTo(cx + r, y);
-      ctx.strokeStyle = '#4a8ab5';
+      ctx.strokeStyle = light ? '#3a7a98' : '#4a8ab5';
       ctx.lineWidth = 1;
       ctx.stroke();
     }
@@ -645,6 +682,7 @@ const GlobeRenderer = {
 
   drawContinent(ctx, coords, cx, cy, r, isNight) {
     const DEG = Math.PI / 180;
+    const light = this.isLight();
     const points3d = coords.map(([lat, lon]) => {
       const latRad = lat * DEG;
       const lonRad = lon * DEG;
@@ -668,7 +706,11 @@ const GlobeRenderer = {
     const avgZ = points3d.reduce((s, p) => s + p.z, 0) / points3d.length;
     const brightness = Math.max(0, avgZ) * 0.6 + 0.4;
 
-    if (isNight) {
+    if (light) {
+      const g = Math.floor(140 + brightness * 50);
+      const b = Math.floor(80 + brightness * 30);
+      ctx.fillStyle = `rgba(80, ${g}, ${b}, ${brightness * 0.9})`;
+    } else if (isNight) {
       ctx.fillStyle = `rgba(15, 35, 25, ${brightness * 0.6})`;
     } else {
       const g = Math.floor(100 + brightness * 60);
@@ -677,9 +719,11 @@ const GlobeRenderer = {
     }
     ctx.fill();
 
-    ctx.strokeStyle = isNight
-      ? `rgba(20, 60, 40, ${brightness * 0.4})`
-      : `rgba(80, 180, 120, ${brightness * 0.5})`;
+    ctx.strokeStyle = light
+      ? `rgba(50, 140, 80, ${brightness * 0.6})`
+      : isNight
+        ? `rgba(20, 60, 40, ${brightness * 0.4})`
+        : `rgba(80, 180, 120, ${brightness * 0.5})`;
     ctx.lineWidth = 1.2 * this.zoom;
     ctx.stroke();
   },
@@ -727,11 +771,19 @@ const GlobeRenderer = {
   },
 
   drawAtmosphere(ctx, cx, cy, r) {
+    const light = this.isLight();
     const atm1 = ctx.createRadialGradient(cx, cy, r * 0.97, cx, cy, r * 1.2);
-    atm1.addColorStop(0, 'rgba(60, 160, 255, 0.12)');
-    atm1.addColorStop(0.3, 'rgba(40, 120, 220, 0.06)');
-    atm1.addColorStop(0.7, 'rgba(20, 80, 180, 0.02)');
-    atm1.addColorStop(1, 'rgba(0, 40, 120, 0)');
+    if (light) {
+      atm1.addColorStop(0, 'rgba(40, 120, 200, 0.15)');
+      atm1.addColorStop(0.3, 'rgba(30, 100, 180, 0.08)');
+      atm1.addColorStop(0.7, 'rgba(20, 80, 160, 0.03)');
+      atm1.addColorStop(1, 'rgba(0, 60, 140, 0)');
+    } else {
+      atm1.addColorStop(0, 'rgba(60, 160, 255, 0.12)');
+      atm1.addColorStop(0.3, 'rgba(40, 120, 220, 0.06)');
+      atm1.addColorStop(0.7, 'rgba(20, 80, 180, 0.02)');
+      atm1.addColorStop(1, 'rgba(0, 40, 120, 0)');
+    }
     ctx.beginPath();
     ctx.arc(cx, cy, r * 1.2, 0, Math.PI * 2);
     ctx.fillStyle = atm1;
@@ -741,9 +793,15 @@ const GlobeRenderer = {
     const sunX = cx + Math.cos(sunAngle) * r * 0.95;
     const sunY = cy + Math.sin(sunAngle) * r * 0.95;
     const rimGrad = ctx.createRadialGradient(sunX, sunY, r * 0.85, sunX, sunY, r * 1.1);
-    rimGrad.addColorStop(0, 'rgba(100, 200, 255, 0)');
-    rimGrad.addColorStop(0.5, 'rgba(80, 180, 255, 0.04)');
-    rimGrad.addColorStop(1, 'rgba(60, 160, 255, 0)');
+    if (light) {
+      rimGrad.addColorStop(0, 'rgba(60, 140, 220, 0)');
+      rimGrad.addColorStop(0.5, 'rgba(50, 120, 200, 0.06)');
+      rimGrad.addColorStop(1, 'rgba(40, 100, 180, 0)');
+    } else {
+      rimGrad.addColorStop(0, 'rgba(100, 200, 255, 0)');
+      rimGrad.addColorStop(0.5, 'rgba(80, 180, 255, 0.04)');
+      rimGrad.addColorStop(1, 'rgba(60, 160, 255, 0)');
+    }
     ctx.beginPath();
     ctx.arc(cx, cy, r * 1.05, 0, Math.PI * 2);
     ctx.fillStyle = rimGrad;
@@ -751,12 +809,19 @@ const GlobeRenderer = {
   },
 
   drawSunHighlight(ctx, cx, cy, r) {
+    const light = this.isLight();
     const sunX = cx - r * 0.35;
     const sunY = cy - r * 0.35;
     const highlight = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, r * 0.8);
-    highlight.addColorStop(0, 'rgba(150, 220, 255, 0.06)');
-    highlight.addColorStop(0.3, 'rgba(100, 180, 230, 0.03)');
-    highlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    if (light) {
+      highlight.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+      highlight.addColorStop(0.3, 'rgba(255, 255, 240, 0.1)');
+      highlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    } else {
+      highlight.addColorStop(0, 'rgba(150, 220, 255, 0.06)');
+      highlight.addColorStop(0.3, 'rgba(100, 180, 230, 0.03)');
+      highlight.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    }
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -769,11 +834,19 @@ const GlobeRenderer = {
   },
 
   drawNightSide(ctx, cx, cy, r) {
+    const light = this.isLight();
     const nightGrad = ctx.createLinearGradient(cx - r, cy, cx + r, cy);
-    nightGrad.addColorStop(0, 'rgba(0, 5, 15, 0.5)');
-    nightGrad.addColorStop(0.4, 'rgba(0, 5, 15, 0.2)');
-    nightGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
-    nightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    if (light) {
+      nightGrad.addColorStop(0, 'rgba(0, 20, 60, 0.15)');
+      nightGrad.addColorStop(0.4, 'rgba(0, 20, 60, 0.06)');
+      nightGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
+      nightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    } else {
+      nightGrad.addColorStop(0, 'rgba(0, 5, 15, 0.5)');
+      nightGrad.addColorStop(0.4, 'rgba(0, 5, 15, 0.2)');
+      nightGrad.addColorStop(0.6, 'rgba(0, 0, 0, 0)');
+      nightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    }
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -789,13 +862,16 @@ const GlobeRenderer = {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.clip();
 
+    const light = this.isLight();
+    const gridColor = light ? 'rgba(40, 80, 120, 0.15)' : 'rgba(60, 120, 180, 0.12)';
+
     for (let i = -3; i <= 3; i++) {
       const lat = (i / 4) * Math.PI * 0.5;
       const y = cy - Math.sin(lat) * r;
       const w2 = Math.cos(lat) * r;
       ctx.beginPath();
       ctx.ellipse(cx, y, w2, w2 * 0.08, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(60, 120, 180, 0.12)';
+      ctx.strokeStyle = gridColor;
       ctx.lineWidth = 0.6;
       ctx.stroke();
     }
@@ -807,7 +883,9 @@ const GlobeRenderer = {
       if (absCos < 0.05) continue;
       ctx.beginPath();
       ctx.ellipse(cx, cy, r * absCos, r, 0, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(60, 120, 180, ${0.08 + absCos * 0.04})`;
+      ctx.strokeStyle = light
+        ? `rgba(40, 80, 120, ${0.1 + absCos * 0.05})`
+        : `rgba(60, 120, 180, ${0.08 + absCos * 0.04})`;
       ctx.lineWidth = 0.6;
       ctx.stroke();
     }
@@ -832,7 +910,7 @@ const GlobeRenderer = {
 
     ctx.beginPath();
     const shadowGrad = ctx.createRadialGradient(cx + r * 0.15, cy + r * 0.15, r * 0.9, cx + r * 0.15, cy + r * 0.15, r * 1.3);
-    shadowGrad.addColorStop(0, 'rgba(0, 0, 0, 0.3)');
+    shadowGrad.addColorStop(0, this.isLight() ? 'rgba(0, 0, 0, 0.1)' : 'rgba(0, 0, 0, 0.3)');
     shadowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.arc(cx + r * 0.08, cy + r * 0.08, r * 1.15, 0, Math.PI * 2);
     ctx.fillStyle = shadowGrad;
@@ -851,7 +929,7 @@ const GlobeRenderer = {
 
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(60, 140, 200, 0.25)';
+    ctx.strokeStyle = this.isLight() ? 'rgba(40, 100, 160, 0.3)' : 'rgba(60, 140, 200, 0.25)';
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -1009,6 +1087,7 @@ function escapeHtml(str) {
 // === App Controller ===
 const App = {
   init() {
+    ThemeManager.init();
     I18N.init();
     Config.fillForm();
     this.bindEvents();
