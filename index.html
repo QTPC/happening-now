@@ -1180,6 +1180,163 @@ const FrequencyChart = {
     }).join('');
   }
 };
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// === App Controller ===
+const App = {
+  init() {
+    I18N.init();
+    Config.fillForm();
+    this.bindEvents();
+  },
+
+  bindEvents() {
+    document.getElementById('analyzeBtn').addEventListener('click', () => this.analyze());
+
+    document.getElementById('eventInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.analyze();
+    });
+
+    // Preset clicks use event delegation since presets are dynamically rendered
+    document.getElementById('presetContainer').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-event]');
+      if (btn) {
+        document.getElementById('eventInput').value = btn.dataset.event;
+        this.analyze();
+      }
+    });
+
+    document.getElementById('settingsBtn').addEventListener('click', () => {
+      document.getElementById('settingsPanel').classList.toggle('active');
+    });
+
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      Config.save(Config.readForm());
+      document.getElementById('settingsPanel').classList.remove('active');
+      alert(I18N.t('settingsSaved'));
+    });
+  },
+
+  async analyze() {
+    const input = document.getElementById('eventInput').value.trim();
+    if (!input) return;
+
+    const btn = document.getElementById('analyzeBtn');
+    const panel = document.getElementById('resultPanel');
+
+    // Check API config
+    const cfg = Config.load();
+    if (!cfg.endpoint || !cfg.apiKey) {
+      panel.classList.add('active');
+      panel.innerHTML = `
+        <div class="error-msg">
+          <p>${escapeHtml(I18N.t('configureApi'))}</p>
+          <p style="margin-top:0.5rem;font-size:0.85rem;color:#8892a4">${escapeHtml(I18N.t('configureApiHint'))}</p>
+        </div>
+      `;
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = I18N.t('analyzing');
+
+    panel.classList.add('active');
+    panel.innerHTML = `
+      <div class="loading">
+        <div class="spinner"></div>
+        <p>${I18N.lang === 'zh' ? '正在分析"' + escapeHtml(input) + '"...' : 'Analyzing "' + escapeHtml(input) + '"...'}</p>
+      </div>
+    `;
+
+    try {
+      const localMatch = EventMatcher.match(input);
+      const result = await LLMClient.analyze(input, localMatch);
+      this.renderResult(input, result, localMatch);
+    } catch (err) {
+      panel.innerHTML = `
+        <div class="error-msg">
+          <p>${escapeHtml(I18N.t('analysisFailed'))}：${escapeHtml(err.message)}</p>
+          <p style="margin-top:0.5rem;font-size:0.85rem;color:#8892a4">${escapeHtml(I18N.t('checkApiOrNetwork'))}</p>
+        </div>
+      `;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = I18N.t('analyze');
+    }
+  },
+
+  renderResult(input, result, localMatch) {
+    const panel = document.getElementById('resultPanel');
+    const freq = result.frequency_per_second || 0;
+    const verdict = this.getVerdict(freq);
+    const eventName = localMatch ? I18N.getEventName(localMatch.event) : input;
+
+    panel.innerHTML = `
+      <div class="result-grid">
+        <div class="globe-container">
+          <canvas id="globeCanvas"></canvas>
+        </div>
+        <div class="result-info">
+          <div class="verdict-card">
+            <div class="verdict-label">${escapeHtml(I18N.t('verdictLabel'))}</div>
+            <div class="verdict-value ${verdict.class}">${escapeHtml(verdict.text)}</div>
+          </div>
+          <div class="frequency-card">
+            <div class="card-title">${escapeHtml(I18N.t('frequencyLabel'))}</div>
+            <div class="frequency-value">${escapeHtml(this.formatFrequency(freq))}</div>
+          </div>
+          <div class="counter-card">
+            <div class="card-title">${escapeHtml(I18N.t('counterLabel'))}</div>
+            <div id="counterDigits" class="counter-digits">0</div>
+            <div id="counterElapsed" class="counter-elapsed"></div>
+            <span id="pulseDot" class="pulse-dot"></span>
+          </div>
+          <div class="reasoning-card">
+            <div class="card-title">${escapeHtml(I18N.t('reasoningLabel'))}</div>
+            <div class="reasoning-text">${escapeHtml(result.reasoning || I18N.t('noData'))}</div>
+            <div class="data-sources">${(result.data_sources || []).map(s => '📊 ' + escapeHtml(s)).join('<br>')}</div>
+          </div>
+          <div class="chart-card">
+            <div class="card-title">${escapeHtml(I18N.t('chartLabel'))}</div>
+            <div id="barChart" class="bar-chart"></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    GlobeRenderer.destroy();
+    GlobeRenderer.init('globeCanvas');
+    GlobeRenderer.setPointRate(freq);
+
+    CounterManager.start(freq);
+
+    FrequencyChart.render(eventName, freq);
+  },
+
+  getVerdict(freq) {
+    if (freq >= 1) return { text: I18N.t('yesVerdict'), class: 'yes' };
+    if (freq >= 0.1) return { text: I18N.t('likelyVerdict'), class: 'likely' };
+    if (freq >= 0.01) return { text: I18N.t('unlikelyVerdict'), class: 'unlikely' };
+    return { text: I18N.t('noVerdict'), class: 'no' };
+  },
+
+  formatFrequency(freq) {
+    if (freq >= 1000000) return I18N.t('approxPerSec') + (freq / 1000000).toFixed(1) + 'M' + I18N.t('timesPerSec');
+    if (freq >= 1000) return I18N.t('approxPerSec') + (freq / 1000).toFixed(1) + 'K' + I18N.t('timesPerSec');
+    if (freq >= 1) return I18N.t('approxPerSec') + freq.toFixed(1) + I18N.t('timesPerSec');
+    if (freq >= 0.1) return I18N.t('approxEverySec') + (1 / freq).toFixed(0) + I18N.t('secOnce');
+    if (freq >= 0.01) return I18N.t('approxEveryMin') + (1 / freq / 60).toFixed(0) + I18N.t('minOnce');
+    return I18N.t('veryLowFreq');
+  }
+};
+
+// === Bootstrap ===
+App.init();
 </script>
 </body>
 </html>
