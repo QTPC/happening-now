@@ -433,7 +433,255 @@ body {
 </div>
 
 <script>
-// JS goes here — subsequent tasks fill in each section
+// === Internationalization (i18n) ===
+const I18N = {
+  _lang: 'zh',
+  _key: 'happening_now_lang',
+
+  translations: {
+    zh: {
+      subtitle: '判断一件事是否每分每秒都在发生',
+      inputPlaceholder: '输入一个事件，例如：有人正在喝可口可乐',
+      analyze: '分析',
+      analyzing: '分析中...',
+      verdictLabel: '结论',
+      frequencyLabel: '发生频率',
+      counterLabel: '实时计数（从分析开始）',
+      reasoningLabel: '推理依据',
+      chartLabel: '频率对比',
+      settingsBtn: '⚙ API 设置',
+      apiEndpoint: 'API 地址',
+      apiKey: 'API Key',
+      modelName: '模型名称',
+      saveBtn: '保存设置',
+      settingsSaved: '设置已保存',
+      configureApi: '请先配置 API 设置',
+      configureApiHint: '点击下方 ⚙ API 设置 进行配置',
+      analysisFailed: '分析失败',
+      checkApiOrNetwork: '请检查 API 设置或网络连接',
+      noData: '无',
+      elapsedPrefix: '已过 ',
+      minutes: '分',
+      seconds: '秒',
+      perSecond: '/秒',
+      approxPerSec: '每秒约 ',
+      timesPerSec: ' 次',
+      approxEverySec: '约每 ',
+      secOnce: ' 秒一次',
+      approxEveryMin: '约每 ',
+      minOnce: ' 分钟一次',
+      veryLowFreq: '频率极低',
+      yesVerdict: '是，每秒都在发生',
+      likelyVerdict: '极有可能',
+      unlikelyVerdict: '偶尔发生',
+      noVerdict: '不太可能每秒都在发生',
+      presets: [
+        { emoji: '🥤', text: '喝可口可乐', event: '有人正在喝可口可乐' },
+        { emoji: '👶', text: '出生', event: '有人正在出生' },
+        { emoji: '🐦', text: '发推特', event: '有人正在发推特' },
+        { emoji: '💀', text: '死亡', event: '有人正在死亡' },
+        { emoji: '🔍', text: 'Google搜索', event: '有人正在Google搜索' },
+      ],
+      eventNames: {
+        '全球有人出生': '全球有人出生',
+        '全球有人死亡': '全球有人死亡',
+        '有人喝可口可乐': '有人喝可口可乐',
+        '有人喝百事可乐': '有人喝百事可乐',
+        '有人发推特': '有人发推特',
+        '有人Google搜索': '有人Google搜索',
+        '有人发微信': '有人发微信',
+        '有人刷抖音/TikTok': '有人刷抖音/TikTok',
+        '有人看YouTube': '有人看YouTube',
+        '有人发Instagram': '有人发Instagram',
+        '有人用Facebook': '有人用Facebook',
+        '有人在淘宝下单': '有人在淘宝下单',
+        '有人在Amazon下单': '有人在Amazon下单',
+        '有人在吃饭': '有人在吃饭',
+        '有人在睡觉': '有人在睡觉',
+        '有人在喝水': '有人在喝水',
+        '有人在上厕所': '有人在上厕所',
+        '有人在咳嗽': '有人在咳嗽',
+        '有人在打喷嚏': '有人在打喷嚏',
+        '有人心跳': '有人心跳',
+        '有人在呼吸': '有人在呼吸',
+        '有地方闪电': '有地方闪电',
+        '有人发邮件': '有人发邮件',
+        '有人刷信用卡': '有人刷信用卡',
+        '有飞机起飞': '有飞机起飞',
+        '有交通事故': '有交通事故',
+        '有地震': '有地震',
+        '某地在下雨': '某地在下雨',
+        '有人结婚': '有人结婚',
+        '有人离婚': '有人离婚',
+        '有人在读书': '有人在读书',
+        '有人在玩游戏': '有人在玩游戏',
+        '有人在打电话': '有人在打电话',
+        '有人点外卖': '有人点外卖',
+        '有人在给手机充电': '有人在给手机充电',
+        '有人在洗衣服': '有人在洗衣服',
+        '有人在跑步': '有人在跑步',
+        '有人在喝酒': '有人在喝酒',
+        '有人在抽烟': '有人在抽烟',
+        '有人在拍照': '有人在拍照',
+      },
+    },
+    en: {
+      subtitle: 'Is this happening somewhere in the world every single second?',
+      inputPlaceholder: 'Enter an event, e.g.: Someone is drinking Coca-Cola',
+      analyze: 'Analyze',
+      analyzing: 'Analyzing...',
+      verdictLabel: 'Verdict',
+      frequencyLabel: 'Frequency',
+      counterLabel: 'Live Counter (since analysis started)',
+      reasoningLabel: 'Reasoning',
+      chartLabel: 'Frequency Comparison',
+      settingsBtn: '⚙ API Settings',
+      apiEndpoint: 'API Endpoint',
+      apiKey: 'API Key',
+      modelName: 'Model Name',
+      saveBtn: 'Save Settings',
+      settingsSaved: 'Settings saved',
+      configureApi: 'Please configure API settings first',
+      configureApiHint: 'Click ⚙ API Settings below to configure',
+      analysisFailed: 'Analysis failed',
+      checkApiOrNetwork: 'Please check API settings or network connection',
+      noData: 'None',
+      elapsedPrefix: 'Elapsed: ',
+      minutes: 'm ',
+      seconds: 's',
+      perSecond: '/sec',
+      approxPerSec: '~',
+      timesPerSec: ' per sec',
+      approxEverySec: 'Every ~',
+      secOnce: ' sec',
+      approxEveryMin: 'Every ~',
+      minOnce: ' min',
+      veryLowFreq: 'Very low frequency',
+      yesVerdict: 'Yes, every second',
+      likelyVerdict: 'Very likely',
+      unlikelyVerdict: 'Occasionally',
+      noVerdict: 'Unlikely every second',
+      presets: [
+        { emoji: '🥤', text: 'Coca-Cola', event: 'Someone is drinking Coca-Cola' },
+        { emoji: '👶', text: 'Birth', event: 'Someone is being born' },
+        { emoji: '🐦', text: 'Tweet', event: 'Someone is posting a tweet' },
+        { emoji: '💀', text: 'Death', event: 'Someone is dying' },
+        { emoji: '🔍', text: 'Google', event: 'Someone is searching on Google' },
+      ],
+      eventNames: {
+        '全球有人出生': 'Someone is being born',
+        '全球有人死亡': 'Someone is dying',
+        '有人喝可口可乐': 'Someone is drinking Coca-Cola',
+        '有人喝百事可乐': 'Someone is drinking Pepsi',
+        '有人发推特': 'Someone is posting a tweet',
+        '有人Google搜索': 'Someone is searching on Google',
+        '有人发微信': 'Someone is sending a WeChat message',
+        '有人刷抖音/TikTok': 'Someone is scrolling TikTok',
+        '有人看YouTube': 'Someone is watching YouTube',
+        '有人发Instagram': 'Someone is posting on Instagram',
+        '有人用Facebook': 'Someone is using Facebook',
+        '有人在淘宝下单': 'Someone is ordering on Taobao',
+        '有人在Amazon下单': 'Someone is ordering on Amazon',
+        '有人在吃饭': 'Someone is eating',
+        '有人在睡觉': 'Someone is sleeping',
+        '有人在喝水': 'Someone is drinking water',
+        '有人在上厕所': 'Someone is using the restroom',
+        '有人在咳嗽': 'Someone is coughing',
+        '有人在打喷嚏': 'Someone is sneezing',
+        '有人心跳': 'Someone\'s heart is beating',
+        '有人在呼吸': 'Someone is breathing',
+        '有地方闪电': 'Lightning strikes somewhere',
+        '有人发邮件': 'Someone is sending an email',
+        '有人刷信用卡': 'Someone is swiping a credit card',
+        '有飞机起飞': 'A plane is taking off',
+        '有交通事故': 'A traffic accident occurs',
+        '有地震': 'An earthquake occurs',
+        '某地在下雨': 'It\'s raining somewhere',
+        '有人结婚': 'Someone is getting married',
+        '有人离婚': 'Someone is getting divorced',
+        '有人在读书': 'Someone is reading a book',
+        '有人在玩游戏': 'Someone is playing a game',
+        '有人在打电话': 'Someone is on a phone call',
+        '有人点外卖': 'Someone is ordering food delivery',
+        '有人在给手机充电': 'Someone is charging their phone',
+        '有人在洗衣服': 'Someone is doing laundry',
+        '有人在跑步': 'Someone is jogging',
+        '有人在喝酒': 'Someone is drinking alcohol',
+        '有人在抽烟': 'Someone is smoking',
+        '有人在拍照': 'Someone is taking a photo',
+      },
+    },
+  },
+
+  init() {
+    const saved = localStorage.getItem(this._key);
+    if (saved && (saved === 'zh' || saved === 'en')) {
+      this._lang = saved;
+    }
+    this.apply();
+    this.renderPresets();
+    this.updateLangButtons();
+  },
+
+  t(key) {
+    return this.translations[this._lang][key] || key;
+  },
+
+  getEventName(zhName) {
+    if (this._lang === 'zh') return zhName;
+    return this.translations.en.eventNames[zhName] || zhName;
+  },
+
+  get lang() {
+    return this._lang;
+  },
+
+  setLang(lang) {
+    if (lang !== 'zh' && lang !== 'en') return;
+    this._lang = lang;
+    localStorage.setItem(this._key, lang);
+    this.apply();
+    this.renderPresets();
+    this.updateLangButtons();
+    document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  },
+
+  apply() {
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      const text = this.t(key);
+      if (text) el.textContent = text;
+    });
+
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+      const key = el.getAttribute('data-i18n-placeholder');
+      const text = this.t(key);
+      if (text) el.placeholder = text;
+    });
+  },
+
+  renderPresets() {
+    const container = document.getElementById('presetContainer');
+    if (!container) return;
+    const presets = this.t('presets');
+    container.innerHTML = presets.map(p =>
+      `<button data-event="${p.event}">${p.emoji} ${p.text}</button>`
+    ).join('');
+  },
+
+  updateLangButtons() {
+    document.querySelectorAll('.lang-switch button').forEach(btn => {
+      const isActive = btn.dataset.lang === this._lang;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+  }
+};
+
+// Language switcher events
+document.querySelectorAll('.lang-switch button').forEach(btn => {
+  btn.addEventListener('click', () => I18N.setLang(btn.dataset.lang));
+});
 </script>
 </body>
 </html>
