@@ -773,6 +773,114 @@ const EventMatcher = {
     return null;
   }
 };
+
+// === LLM Client ===
+const LLMClient = {
+  async analyze(eventDescription, localMatch) {
+    const cfg = Config.load();
+    if (!cfg.endpoint || !cfg.apiKey) {
+      throw new Error(I18N.t('configureApi'));
+    }
+
+    const isZh = I18N.lang === 'zh';
+
+    const systemPrompt = isZh
+      ? `你是一个数据分析师，负责判断一个事件是否"每分每秒"都在全球发生。你需要基于常识和已知数据进行推理。
+
+请严格以 JSON 格式回复，不要包含任何其他文字：
+{
+  "happening": true/false,
+  "confidence": "high" / "medium" / "low",
+  "frequency_per_second": 数字,
+  "reasoning": "推理过程",
+  "data_sources": ["数据来源1", "数据来源2"]
+}
+
+判断标准：
+- frequency_per_second >= 1：happening = true
+- 0.1 <= frequency < 1：happening = true（但频率较低）
+- frequency < 0.1：happening = false`
+      : `You are a data analyst. Determine whether a given event is happening "every single second" somewhere in the world. Reason based on common sense and known data.
+
+Respond strictly in JSON format, no other text:
+{
+  "happening": true/false,
+  "confidence": "high" / "medium" / "low",
+  "frequency_per_second": number,
+  "reasoning": "your reasoning",
+  "data_sources": ["source1", "source2"]
+}
+
+Criteria:
+- frequency_per_second >= 1: happening = true
+- 0.1 <= frequency < 1: happening = true (but less frequent)
+- frequency < 0.1: happening = false`;
+
+    let userPrompt = isZh
+      ? `请分析这个事件是否每分每秒都在发生："${eventDescription}"`
+      : `Analyze whether this event is happening every second somewhere in the world: "${eventDescription}"`;
+
+    if (localMatch) {
+      const unit = isZh ? localMatch.unit_zh : localMatch.unit_en;
+      const source = isZh ? localMatch.source_zh : localMatch.source_en;
+      const eventName = I18N.getEventName(localMatch.event);
+      userPrompt += isZh
+        ? `\n\n参考数据：根据内置数据库，类似事件"${eventName}"的频率约为 ${localMatch.frequency} ${unit}（来源：${source}）。请基于此数据进行更精确的分析。`
+        : `\n\nReference data: According to our database, a similar event "${eventName}" occurs at approximately ${localMatch.frequency} ${unit} (source: ${source}). Please use this data for a more precise analysis.`;
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    try {
+      const res = await fetch(cfg.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${cfg.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: cfg.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`API ${res.status}: ${errBody}`);
+      }
+
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) throw new Error('API returned empty content');
+
+      return this.parseResponse(content);
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === 'AbortError') {
+        throw new Error(isZh ? '请求超时（15秒），请检查网络或 API 地址' : 'Request timeout (15s), check network or API endpoint');
+      }
+      throw err;
+    }
+  },
+
+  parseResponse(content) {
+    try { return JSON.parse(content); } catch {}
+    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (jsonMatch) { try { return JSON.parse(jsonMatch[1]); } catch {} }
+    const braceMatch = content.match(/\{[\s\S]*\}/);
+    if (braceMatch) { try { return JSON.parse(braceMatch[0]); } catch {} }
+    throw new Error(I18N.lang === 'zh' ? '无法解析 AI 返回的结果，请重试' : 'Failed to parse AI response, please retry');
+  }
+};
 </script>
 </body>
 </html>
