@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="Content-Security-Policy" content="frame-ancestors 'none'">
 <title>Happening Now</title>
 <style>
 /* === Reset & Base === */
@@ -37,7 +37,6 @@ body {
   top: 1rem;
   right: 1.5rem;
   display: flex;
-  gap: 0;
   border: 1px solid #2a3040;
   border-radius: 6px;
   overflow: hidden;
@@ -364,8 +363,8 @@ body {
 <body>
 <div class="header">
   <div class="lang-switch">
-    <button data-lang="zh" class="active">中文</button>
-    <button data-lang="en">EN</button>
+    <button data-lang="zh" class="active" aria-pressed="true">中文</button>
+    <button data-lang="en" aria-pressed="false">EN</button>
   </div>
   <h1>Happening Now</h1>
   <p data-i18n="subtitle">判断一件事是否每分每秒都在发生</p>
@@ -373,7 +372,7 @@ body {
 
 <div class="input-area">
   <div class="input-row">
-    <input type="text" id="eventInput" data-i18n-placeholder="inputPlaceholder" placeholder="输入一个事件，例如：有人正在喝可口可乐" />
+    <input type="text" id="eventInput" data-i18n-placeholder="inputPlaceholder" placeholder="输入一个事件，例如：有人正在喝可口可乐" aria-label="Event input" />
     <button id="analyzeBtn" data-i18n="analyze">分析</button>
   </div>
   <div class="presets" id="presetContainer">
